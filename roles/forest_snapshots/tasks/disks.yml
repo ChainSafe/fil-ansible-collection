@@ -1,0 +1,14 @@
+---
+- name: Configure disks
+  block:
+    - name: Create RAID0 array from extra disks (each 22TB)
+      ansible.builtin.include_role:
+        name: mrlesmithjr.mdadm
+      vars:
+        mdadm_arrays:
+          - name: "{{ external_disk.raid_device_name }}"
+            devices: "{{ external_disk.raid_devices }}"
+            filesystem: "{{ external_disk.filesystem_type }}"
+            level: "{{ external_disk.raid_level }}"
+            mountpoint: "{{ external_disk.mount_point }}"
+            state: present

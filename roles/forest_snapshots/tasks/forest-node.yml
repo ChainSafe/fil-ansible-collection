@@ -1,0 +1,29 @@
+---
+- name: Ensure required directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ docker_compose.project_path }}"
+    - "{{ forest.host.config_path }}"
+    - "{{ forest.host.data_path }}"
+    - "{{ forest.host.scripts_path }}"
+    - "{{ grafana_alloy.config_path }}"
+
+- name: Deploy forest entrypoint
+  ansible.builtin.template:
+    src: "forest/forest.sh.j2"
+    dest: "{{ forest.host.scripts_path }}/forest.sh"
+    mode: '0755'
+  notify: Restart forest
+
+- name: Copy forest configs
+  ansible.builtin.template:
+    src: "forest/{{ item }}.j2"
+    dest: "{{ forest.host.config_path }}/{{ item }}"
+    mode: '0755'
+  loop:
+    - config.toml
+    - filter-list.txt
+  notify: Restart forest

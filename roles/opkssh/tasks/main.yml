@@ -1,0 +1,13 @@
+- name: Download OpkSSH
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/openpubkey/opkssh/main/scripts/install-linux.sh
+    dest: /tmp/opkssh-install-linux.sh
+    mode: '0750'
+
+- name: Install OpkSSH
+  ansible.builtin.command:
+    cmd: /tmp/opkssh-install-linux.sh --no-home-policy
+    creates: /usr/local/bin/opkssh
+
+- name: Update config files
+  ansible.builtin.include_tasks: update_config.yml

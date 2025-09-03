@@ -1,0 +1,169 @@
+#!/bin/bash
+# Strict mode
+set -euo pipefail
+set +x
+trap 'echo "Interrupted, exiting..." >&2; exit 1' INT TERM
+
+# Constants
+readonly SECONDS_PER_EPOCH=30
+readonly LITE_DEPTH=30000
+readonly DIFF_DEPTH=3000
+readonly STATE_ROOTS=900
+export JOB_NAME="build-snapshots"
+
+source /scripts/helpers.sh
+source /scripts/metrics.sh
+
+# Build Full snapshot
+full_snapshot() {
+  local current_epoch="$1"
+  local full_snapshot="${FULL_SNAPSHOTS_DIR}/forest_snapshot_${CHAIN}_height_${current_epoch}.forest.car.zst"
+  info "Creating Full Snapshot: ${full_snapshot}"
+  local start_time=${SECONDS}
+  if [[ ! -f "${full_snapshot}" ]]; then
+    if forest-cli snapshot export \
+      --tipset "${current_epoch}" \
+      --depth "${LITE_DEPTH}" \
+      -o "${full_snapshot}"; then
+        info "Full Snapshot finished. Took $(secs_to_dhms $((SECONDS - start_time)))"
+        increment_success_counter
+        update_process_duration "$((SECONDS - start_time))"
+     else
+        local error_message="Full snapshot ${current_epoch} failed"
+        slack_notify "${error_message}" "failed"
+        increment_failure_counter
+        error "${error_message}"
+    fi
+  else
+    warning "File ${full_snapshot} exists. Skipping"
+  fi
+}
+
+# Lite Snapshot generation
+lite_snapshot() {
+  local current_epoch="$1"
+  local full_snapshot="${FULL_SNAPSHOTS_DIR}/forest_snapshot_${CHAIN}_height_${current_epoch}.forest.car.zst"
+
+  local lite_epoch_ts=$((GENESIS_TIMESTAMP + current_epoch * SECONDS_PER_EPOCH))
+  local lite_date
+  lite_date=$(date -uI -d "@$lite_epoch_ts")
+
+  local lite_snapshot="${LITE_SNAPSHOT_DIR}/forest_snapshot_${CHAIN}_${lite_date}_height_${current_epoch}.forest.car.zst"
+  info "Creating Lite Snapshot: ${lite_snapshot}"
+  local start_time=${SECONDS}
+  pushd ${LITE_SNAPSHOT_DIR} > /dev/null
+  if [[ ! -f "${lite_snapshot}" ]]; then
+    if forest-tool archive export \
+      --epoch "${current_epoch}" \
+      "${full_snapshot}" >/dev/null; then
+        update_process_duration "$((SECONDS - start_time))"
+        info "Lite Snapshot finished. Took $(secs_to_dhms $((SECONDS - start_time)))"
+        increment_success_counter
+      else
+        local error_message="Lite snapshot epoch ${current_epoch} failed"
+        slack_notify "${error_message}" "failed"
+        increment_failure_counter
+        error "${error_message}"
+    fi
+  else
+    warning "File ${lite_snapshot} exists. Skipping"
+  fi
+  popd > /dev/null
+}
+
+diff_snapshots() {
+  local current_epoch="$1"
+  local full_snapshot="${FULL_SNAPSHOTS_DIR}/forest_snapshot_${CHAIN}_height_${current_epoch}.forest.car.zst"
+  local epoch_start=$((current_epoch - LITE_DEPTH))
+  local start_time
+  local diff_epoch
+  local diff_epoch_start
+  local diff_epoch_date_str
+  pushd ${DIFF_SNAPSHOT_DIR} > /dev/null
+  for (( i = 1; i <= 10; i++ )); do
+    start_time=${SECONDS}
+    diff_epoch=$((epoch_start + DIFF_DEPTH * i))
+    diff_epoch_start=$((diff_epoch - DIFF_DEPTH))
+
+    diff_epoch_date_str=$(date -uI -d "@$((GENESIS_TIMESTAMP + diff_epoch * SECONDS_PER_EPOCH))")
+    local diff_snapshot="${DIFF_SNAPSHOT_DIR}/forest_diff_${CHAIN}_${diff_epoch_date_str}_height_${diff_epoch_start}+${DIFF_DEPTH}.forest.car.zst"
+    info "Creating Diff Snapshot: ${diff_snapshot}"
+    if [[ ! -f "${diff_snapshot}" ]]; then
+      if forest-tool archive export \
+        --depth "${DIFF_DEPTH}" \
+        --epoch "${diff_epoch}" \
+        --diff "${diff_epoch_start}" \
+        --diff-depth "${STATE_ROOTS}" \
+        --output-path "${diff_snapshot}" \
+        "${full_snapshot}" >/dev/null; then
+          sha256sum "${diff_snapshot}" > "${diff_snapshot}.sha256sum"
+          info "Diff Snapshot finished. Took $(secs_to_dhms $((SECONDS - start_time)))"
+          increment_success_counter
+          update_process_duration "$((SECONDS - start_time))"
+      else
+          local error_message="Diff snapshot epoch ${diff_epoch} failed"
+          increment_failure_counter
+          slack_notify "${error_message}" "failed"
+          error "${error_message}"
+      fi
+    else
+      warning "File ${diff_snapshot} exists. Skipping"
+    fi
+  done
+  popd > /dev/null
+}
+
+process_snapshots() {
+  local current_epoch="$1"
+
+  full_snapshot "${current_epoch}"
+  lite_snapshot "${current_epoch}"
+  diff_snapshots "${current_epoch}"
+  # rm -f "${FULL_SNAPSHOTS_DIR}/*"
+
+  rabbit_produce "created" "${current_epoch}"
+}
+
+process_epochs() {
+  local last_snapshotted_epoch="$1"
+  local full_start=${SECONDS}
+  local current=$((last_snapshotted_epoch + LITE_DEPTH))
+  update_total_epochs_metric "$END_EPOCH"
+
+  while true; do
+    local batch_start=${SECONDS}
+    last_computed_epoch=$(rabbit_consume_latest_with_default "computed" "{{ forest.compute.start_epoch }}")
+    if ((last_computed_epoch > current)); then
+      info "Processing epochs $((current - LITE_DEPTH)) to ${current} on ${CHAIN}"
+
+      update_progress_metric "$current"
+      process_snapshots  "$current"
+
+      # Print progress
+      local progress
+      progress="$(progress_info "$current" "$last_computed_epoch" "$LITE_DEPTH" "$full_start" "$batch_start")"
+      info "${progress}"
+      slack_notify "${progress}" "success"
+      current=$((current + LITE_DEPTH))
+      continue
+    else
+      warning "Epoch ${current} is not computed yet. Waiting 30 minutes ..."
+      sleep $((60*30))
+    fi
+  done
+}
+
+main() {
+  setup_metrics
+  start_metrics_server
+
+  rabbit_setup "created"
+  local last_snapshotted_epoch
+  last_snapshotted_epoch=$(rabbit_consume_latest_with_default "created" "{{ forest.build_snapshots.start_epoch }}")
+  current=$((last_snapshotted_epoch + LITE_DEPTH))
+
+  init_folders
+  process_epochs "${last_snapshotted_epoch}"
+}
+
+main

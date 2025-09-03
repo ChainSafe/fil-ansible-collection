@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+forest \
+  --chain "{{ network }}" \
+  --auto-download-snapshot  \
+  --config "{{ forest.container.config_path }}/config.toml"

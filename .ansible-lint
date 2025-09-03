@@ -1,0 +1,13 @@
+---
+profile: production
+parseable: true
+use_default_rules: true
+
+exclude_paths:
+  - .ansible/
+  - .github/
+  - '*.yaml'
+
+skip_list:
+  - var-naming[no-role-prefix]
+  - yaml[commas]

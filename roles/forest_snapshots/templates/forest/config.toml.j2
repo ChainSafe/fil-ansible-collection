@@ -1,0 +1,16 @@
+[client]
+#Controls whether the keystore is encrypted
+encrypt_keystore = false
+data_dir = "{{ forest.container.data_path }}"
+enable_rpc = true
+enable_metrics_endpoint = true
+metrics_address = "127.0.0.1:6116"
+rpc_address = "0.0.0.0:2345"
+
+[network]
+listening_multiaddrs = ["/ip4/0.0.0.0/tcp/34000", "/ip6/::/tcp/34000"]
+#Kademlia option enforce p2p connections.
+kademlia = true
+#Amount of peers the node should maintain a connection with
+#Helps in syncing ( moderate value to not be exceeded)
+target_peer_count = 1000

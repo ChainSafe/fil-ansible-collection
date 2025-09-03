@@ -1,0 +1,7 @@
+---
+ansible_user: root
+devops_user: devops
+devops_google_group: DevOps
+backup_user: loginbackup
+github_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILAiH9WLLZd2qaSp6stpzTVTIjgzmWMuGJRqYv1NeRJa github-actions"
+awx_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEQdyDPqu80ZSimqReNHZhHN7xTSK4CXTHjI2nZlQ911 awx@chainsafe.io"

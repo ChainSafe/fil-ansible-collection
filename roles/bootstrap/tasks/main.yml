@@ -1,0 +1,62 @@
+---
+- name: Create default users
+  block:
+    - name: Create user groups for default users
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - "{{ devops_user }}"
+        - "{{ backup_user }}"
+
+    - name: Create user accounts for the default users and add them to sudo
+      ansible.builtin.user:
+        name: "{{ item }}"
+        group: "{{ item }}"
+        groups: "sudo"
+        shell: /bin/bash
+        append: true
+      loop:
+        - "{{ devops_user }}"
+        - "{{ backup_user }}"
+    - name: Set Github Actions SSH access for default users
+      ansible.posix.authorized_key:
+        user: "{{ item }}"
+        state: present
+        comment: "Github action key"
+        key: "{{ github_pubkey }}"
+      loop:
+        - "{{ devops_user }}"
+        - "{{ backup_user }}"
+    - name: Set AWX SSH access for default users
+      ansible.posix.authorized_key:
+        user: "{{ item }}"
+        state: present
+        comment: "AWX key"
+        key: "{{ awx_pubkey }}"
+      loop:
+        - "{{ devops_user }}"
+        - "{{ backup_user }}"
+    - name: Allow users of sudo group to sudo without a password
+      community.general.sudoers:
+        name: allow-sudo-without-password
+        state: present
+        group: sudo
+        commands: ALL
+        nopassword: true
+
+- name: Setup OpkSSH
+  ansible.builtin.include_role:
+    name: chainsafe.general.filecoin_opkssh
+
+- name: Configure sshd
+  ansible.builtin.lineinfile:
+    path: "/etc/ssh/sshd_config"
+    regex: "^(#)?{{ item.key }}"
+    line: "{{ item.key }} {{ item.value }}"
+    state: present
+  loop:
+    - { key: "PermitRootLogin", value: "no" }
+    - { key: "PasswordAuthentication", value: "no" }
+  notify:
+    - Restart sshd

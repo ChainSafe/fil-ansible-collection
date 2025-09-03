@@ -1,0 +1,7 @@
+---
+opkssh_config_dir: "/etc/opk"
+opkssh_provider_ttl: "24h"
+opkssh_google_users: []
+
+#Google does not support group claims in the ID token yet. we need to use the email claim instead.
+#https://github.com/openpubkey/opkssh/issues/81#issuecomment-2769753210

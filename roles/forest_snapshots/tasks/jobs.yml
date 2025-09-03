@@ -1,0 +1,17 @@
+---
+- name: Template jobs
+  ansible.builtin.template:
+    src: "jobs/{{ item.src }}.j2"
+    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
+    mode: "0755"
+  loop:
+    - { src: "helpers.sh" }
+    - { src: "metrics.sh" }
+    - { src: "download-snapshots.sh", notify: "Restart download-snapshots" }
+    - { src: "validate-snapshots.sh", notify: "Restart validate-snapshots" }
+    - { src: "compute-state.sh",      notify: "Restart compute-state" }
+    - { src: "build-snapshots.sh",    notify: "Restart build-snapshots" }
+    - { src: "upload-snapshots.sh",   notify: "Restart upload-snapshots" }
+  notify: "{{ item.notify | default(omit) }}"
+  loop_control:
+    label: "{{ item.src }}"

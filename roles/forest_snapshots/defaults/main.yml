@@ -1,0 +1,72 @@
+aws:
+  endpoint_url: "https://2238a825c5aca59233eab1f221f7aefb.r2.cloudflarestorage.com"
+  access_key_id: ""
+  secret_access_key: ""
+
+external_disk:
+  raid_devices: ""
+  raid_device_name: md0
+  raid_level: 0
+  mount_point: /data
+  filesystem_type: ext4
+
+docker_compose:
+  project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ network }}"
+
+network: "testnet"
+
+forest:
+  image:
+    name: ghcr.io/chainsafe/forest
+    tag: latest-fat
+  node_type: "archive"
+  host:
+    config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
+    data_path: "/data/forest"
+    snapshot_path: "/data/snapshots/{{ network }}"
+    scripts_path: "/home/{{ ansible_user }}/forest/{{ network }}/scripts"
+  container:
+    config_path: "/home/forest/config"
+    data_path: "/home/forest/data"
+    scripts_path: "/scripts"
+    snapshot_path: "/home/forest/snapshots"
+    metrics_path: "/data/metrics"
+  compute:
+    replicas: 0
+    start_epoch: 0
+    batch_size: 100
+  download_snapshots:
+    replicas: 0
+    start_epoch: 0
+  validate_snapshots:
+    replicas: 0
+    start_epoch: 0
+  build_snapshots:
+    replicas: 1
+    start_epoch: 0
+  upload_snapshots:
+    replicas: 1
+    start_epoch: 0
+  metrics:
+    port: 6116
+
+rabbitmq:
+  replicas: 1
+  user: "guest"
+  password: "password"
+  data_path: "/data/rabbitmq/{{ network }}"
+
+grafana_alloy:
+  replicas: 1
+  config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ network }}"
+  image: "grafana/alloy:latest"
+  api_key: "GRAFANA_CLOUD_API_KEY"
+  metrics:
+    endpoint: "https://prometheus-prod-xx.grafana.net"
+    username: "GRAFANA_CLOUD_METRICS_USERNAME"
+  logs:
+    endpoint: "https://logs-prod-xx.grafana.net"
+    username: "GRAFANA_CLOUD_LOGS_USERNAME"
+
+slack:
+  token: "SLACK_TOKEN"

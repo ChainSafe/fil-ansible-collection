@@ -1,0 +1,79 @@
+#!/bin/bash
+# Strict mode
+set -euo pipefail
+set +x
+trap 'echo "Interrupted, exiting..." >&2; exit 1' INT TERM
+
+# Constants
+readonly BATCH_SIZE="{{ forest.compute.batch_size }}"
+export JOB_NAME="compute-state"
+
+source /scripts/helpers.sh
+source /scripts/metrics.sh
+
+state_compute() {
+  local current_epoch="$1"
+  info "Computing ${current_epoch}"
+  local start_time=${SECONDS}
+  if forest-cli state compute \
+    --epoch "${current_epoch}" \
+    -n "${BATCH_SIZE}" >/dev/null; then
+      info "Epochs ${current_epoch} - $((current_epoch + BATCH_SIZE)) computed"
+      increment_success_counter
+      update_process_duration "$((SECONDS - start_time))"
+      return 0
+  else
+    warning "Epochs ${current_epoch} - $((current_epoch + BATCH_SIZE)) failed"
+    increment_failure_counter
+    update_process_duration "$((SECONDS - start_time))"
+    return 1
+  fi
+}
+
+compute_epochs() {
+  local current_epoch="$1"
+
+  if state_compute "${current_epoch}"; then
+    # Store computed height in cache
+    rabbit_produce "computed" "$((current_epoch - 1))"
+  else
+    local error_message="Batch failed at epoch ${current}-$((current + BATCH_SIZE))."
+    # slack_notify "${error_message}" "failed"
+    rabbit_produce "computed-failed" "${current_epoch}"
+    error "${error_message}"
+  fi
+}
+
+process_epochs() {
+  local last_processed_epoch="$1"
+  local full_start_time=${SECONDS}
+  local current=$((last_processed_epoch + 1))
+  update_total_epochs_metric "$END_EPOCH"
+
+  while [ "${current}" -le "${END_EPOCH}" ]; do
+    local batch_start_time=${SECONDS}
+    local batch_end=$((current + BATCH_SIZE - 1))
+    info "Computing epochs ${current} to ${batch_end} on ${CHAIN}"
+
+    update_progress_metric "${current}"
+    compute_epochs "${current}"
+
+    info "$(progress_info "${current}" "${END_EPOCH}" "${BATCH_SIZE}" "${full_start_time}" "${batch_start_time}")"
+    current=$((current + BATCH_SIZE))
+  done
+}
+
+main() {
+  setup_metrics
+  start_metrics_server
+
+  rabbit_setup "computed"
+  local last_processed_epoch
+  last_processed_epoch=$(rabbit_consume_latest_with_default "computed" "{{ forest.compute.start_epoch }}")
+  current=$((last_processed_epoch + 1))
+
+  init_folders
+  process_epochs "$last_processed_epoch"
+}
+
+main

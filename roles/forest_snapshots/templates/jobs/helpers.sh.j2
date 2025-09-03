@@ -1,0 +1,185 @@
+#!/bin/bash
+
+# Strict mode
+set -euo pipefail
+set +x
+trap 'echo "Interrupted, exiting..." >&2; exit 1' INT TERM
+
+# Logging
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+NC='\033[0m'
+
+info() {
+  local message="${1}"
+  echo -e "${GREEN}INFO: ${message}${NC}"
+}
+
+warning() {
+  local message="${1}"
+  echo -e "${YELLOW}WARNING: ${message}${NC}"
+}
+
+error() {
+  local message="${1}"
+  local error_code="${2:-1}"
+  echo -e "${RED}ERROR: ${message}${NC}" >&2
+  exit "$error_code"
+}
+
+# Requirements
+validate_required_commands() {
+    local required_commands=("forest-cli" "forest-tool" "bc" "jq" "python3")
+    for cmd in "${required_commands[@]}"; do
+        command -v "$cmd" >/dev/null || error "$cmd not found"
+    done
+}
+validate_required_commands
+
+# Constants
+readonly CHAIN="{{ network }}"
+readonly SLACK_TOKEN="${ARCHIVAL_SLACK_TOKEN}"
+readonly RABBITMQ_CLIENT="{{ forest.container.scripts_path }}/rabbitmq.py"
+readonly FULL_SNAPSHOTS_DIR="{{ forest.container.snapshot_path }}/full"
+readonly LITE_SNAPSHOT_DIR="{{ forest.container.snapshot_path }}/lite"
+readonly DIFF_SNAPSHOT_DIR="{{ forest.container.snapshot_path }}/diff"
+
+readonly FOREST_IP=$(getent hosts "${FOREST_HOST}" | awk '{ print $1 }')
+readonly FULLNODE_API_INFO="$(cat "{{ forest.container.data_path }}/token"):/ip4/${FOREST_IP}/tcp/2345/http"
+export FULLNODE_API_INFO
+export RUST_LOG=warn
+readonly GENESIS_TIMESTAMP=$(forest-cli chain genesis | jq -r '.Blocks[0].Timestamp')
+readonly END_EPOCH=$(forest-cli chain head --format json | jq -r '.[0].epoch')
+
+# Usage: rabbit_setup <queue>
+rabbit_setup() {
+    local queue="$1"
+    python3 "$RABBITMQ_CLIENT" setup "$queue"
+}
+
+# Usage: rabbit_produce <exchange> <message>
+rabbit_produce() {
+    local exchange="$1"
+    local message="$2"
+    python3 "$RABBITMQ_CLIENT" produce "$exchange" "$message"
+}
+
+# Usage: rabbit_consume <queue>
+# Returns JSON: {"delivery_tag": N, "queue": "...", "message": "..."}
+rabbit_consume() {
+    local queue="$1"
+    python3 "$RABBITMQ_CLIENT" consume "$queue"
+}
+
+# Usage: rabbit_ack <delivery_tag>
+rabbit_ack() {
+    local tag="$1"
+    python3 "$RABBITMQ_CLIENT" ack "$tag"
+}
+
+# Usage: rabbit_reject <delivery_tag> [requeue]
+rabbit_reject() {
+    local tag="$1"
+    python3 "$RABBITMQ_CLIENT" reject "$tag"
+}
+
+# Usage: rabbit_consume_latest_with_default <queue> <default_value>
+rabbit_consume_latest_with_default() {
+    local queue="$1"
+    local default_value="$2"
+    local epoch
+
+    result=$(rabbit_consume "${queue}-latest")
+    # If result is empty JSON or nothing → fallback
+    if [[ -z "$result" || "$result" == "{}" ]]; then
+        epoch="$default_value"
+    else
+        epoch=$(echo "$result" | jq -r '.message')
+    fi
+    echo "${epoch}"
+}
+
+# Initialize snapshot folders
+init_folders() {
+    for dir in "$FULL_SNAPSHOTS_DIR" "$LITE_SNAPSHOT_DIR" "$DIFF_SNAPSHOT_DIR"; do
+        if [ ! -d "$dir" ]; then
+            mkdir -p "$dir"
+            info "Created $dir"
+        fi
+    done
+}
+
+# Convert seconds to dhms string
+secs_to_dhms() {
+    local total=$1
+    local days=$((total/86400))
+    local hours=$(( (total%86400)/3600 ))
+    local mins=$(( (total%3600)/60 ))
+    local secs=$((total%60))
+    local result=""
+    ((days>0)) && result+="$days days, "
+    ((hours>0)) && result+="$hours hours, "
+    result+="$mins mins, $secs secs"
+    printf "%s" "$result"
+}
+
+# Usage: progress_info <current_epoch> <end_epoch> <batch_size> <full_start_time> <batch_start_time>
+progress_info() {
+  local current=$1
+  local end=$2
+  local size=$3
+  local full_start=$4
+  local batch_start=$5
+  local full_elapsed=$((SECONDS - full_start))
+  local batch_elapsed=$((SECONDS - batch_start))
+  full_duration=$(secs_to_dhms ${full_elapsed})
+  batch_duration=$(secs_to_dhms ${batch_elapsed})
+  time_left=$(secs_to_dhms $(((end-current+size) * batch_elapsed / size)))
+  progress=$(bc <<< "scale=2; $current*100/$end")
+  printf "[%5.2f%%] Batch [${current}-$((current + size))] duration: %s (total: %s, left: %s)" \
+    "${progress}" "${batch_duration}" "${full_duration}" "${time_left}"
+}
+
+# Usage: slack_notify "Validated 1-2 epochs" "success"
+slack_notify() {
+  local message="$1"
+  local status="${2:-info}" # info, success, failure
+  local channel="${3:-#forest-dump}"
+
+  local color
+  case "$status" in
+  success)
+    color="good"
+    message="✅ ${JOB_NAME}: ${message} 🌲🌳🌲🌳🌲"
+    ;;
+  failure)
+    color="danger"
+    message="❌ ${JOB_NAME}: ${message} 🔥🌲🔥"
+    ;;
+  *)
+    color="#439FE0"
+    message="${JOB_NAME}: ${message}"
+    ;;
+  esac
+
+  # JSON payload with attachment for color
+  payload=$(
+    cat <<EOF
+{
+    "channel": "$channel",
+    "attachments": [
+        {
+            "text": "$message",
+            "color": "$color"
+        }
+    ]
+}
+EOF
+  )
+  curl -s -X POST "https://slack.com/api/chat.postMessage" \
+    -H "Authorization: Bearer $SLACK_TOKEN" \
+    -H 'Content-type: application/json' \
+    --data "$payload" \
+    -o /dev/null
+}

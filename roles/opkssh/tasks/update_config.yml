@@ -1,0 +1,18 @@
+---
+# provider config file contains a list of allowed OPs (OpenID Providers)
+- name: Copy provider config file
+  ansible.builtin.template:
+    src: providers.j2
+    dest: "{{ opkssh_config_dir }}/providers"
+    owner: root
+    group: opksshuser
+    mode: '0640'
+
+# auth_id config file contains a list of allowed users
+- name: Copy auth_id config file
+  ansible.builtin.template:
+    src: auth_id.j2
+    dest: "{{ opkssh_config_dir }}/auth_id"
+    owner: root
+    group: opksshuser
+    mode: '0640'

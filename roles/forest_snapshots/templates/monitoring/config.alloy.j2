@@ -1,0 +1,161 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+discovery.docker "linux" {
+    host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "logs_integrations_docker" {
+    targets = discovery.docker.linux.targets
+
+    rule {
+        source_labels = [
+            "__meta_docker_container_name",
+        ]
+        regex = "/(.*)"
+        target_label = "service_name"
+    }
+    rule {
+        target_label = "instance"
+        replacement  = "{{ inventory_hostname }}"
+    }
+    rule {
+        source_labels = ["__meta_docker_container_name"]
+        regex         = "grafana-alloy"
+        action        = "drop"
+    }
+}
+
+loki.source.docker "default" {
+    host = "unix:///var/run/docker.sock"
+    targets = discovery.relabel.logs_integrations_docker.output
+    forward_to = [
+        loki.write.grafana_cloud.receiver,
+    ]
+}
+
+prometheus.exporter.cadvisor "docker" {
+    docker_host = "unix:///var/run/docker.sock"
+    storage_duration = "5m"
+}
+
+prometheus.scrape "docker" {
+    targets = prometheus.exporter.cadvisor.docker.targets
+    forward_to = [
+        prometheus.relabel.docker.receiver,
+    ]
+}
+
+prometheus.relabel "docker" {
+    forward_to = [
+        prometheus.remote_write.grafana_cloud.receiver,
+    ]
+
+    rule {
+        action       = "replace"
+        target_label = "instance"
+        replacement  = "{{ inventory_hostname }}"
+    }
+    rule {
+        action        = "drop"
+        source_labels = ["__meta_docker_container_name"]
+        regex         = "grafana-alloy"
+    }
+}
+
+prometheus.scrape "forest_metrics" {
+    targets = [
+        {
+            "__address__" = "forest:{{ forest.metrics.port }}",
+            job = "compute-state",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "build-snapshots:{{ forest.metrics.port }}",
+            job = "build-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "validate-snapshots:{{ forest.metrics.port }}",
+            job = "validate-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "download-snapshots:{{ forest.metrics.port }}",
+            job = "download-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "upload-snapshots:{{ forest.metrics.port }}",
+            job = "upload-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+    ]
+
+    scrape_interval = "15s"
+    forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "service_metrics" {
+    targets = [
+        {
+            "__address__" = "compute-state:{{ forest.metrics.port }}",
+            job = "compute-state",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "build-snapshots:{{ forest.metrics.port }}",
+            job = "build-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "validate-snapshots:{{ forest.metrics.port }}",
+            job = "validate-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+        {
+            "__address__" = "upload-snapshots:{{ forest.metrics.port }}",
+            job = "upload-snapshots",
+            instance = "{{ inventory_hostname }}",
+        },
+    ]
+
+    scrape_interval = "15s"
+    forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.exporter.unix "default" {
+  include_exporter_metrics = true
+}
+
+prometheus.scrape "metrics_scrape" {
+  targets           = prometheus.exporter.unix.default.targets
+  scrape_interval   = "15s"
+  forward_to        = [
+    prometheus.remote_write.grafana_cloud.receiver,
+  ]
+}
+
+prometheus.remote_write "grafana_cloud" {
+    endpoint {
+      url = sys.env("METRICS_ENDPOINT")
+
+      basic_auth {
+        username = sys.env("METRICS_USERNAME")
+        password = sys.env("GRAFANA_CLOUD_API_KEY")
+      }
+    }
+}
+
+loki.write "grafana_cloud" {
+    endpoint {
+      url = sys.env("LOGS_ENDPOINT")
+
+      basic_auth {
+        username = sys.env("LOGS_USERNAME")
+        password = sys.env("GRAFANA_CLOUD_API_KEY")
+      }
+    }
+}

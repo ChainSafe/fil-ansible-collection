@@ -1,0 +1,12 @@
+---
+- name: Create rabbitmq directory
+  ansible.builtin.file:
+    path: "{{ rabbitmq.data_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy RabbitMQ client
+  ansible.builtin.template:
+    src: "jobs/rabbitmq.py"
+    dest: "{{ forest.host.scripts_path }}/rabbitmq.py"
+    mode: '0755'

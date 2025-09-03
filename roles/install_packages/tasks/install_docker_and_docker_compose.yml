@@ -1,0 +1,23 @@
+---
+- name: Install docker + docker-compose
+  ansible.builtin.include_role:
+    name: geerlingguy.docker
+
+- name: Docker Python wrapper
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+
+- name: Add ansible user to docker group
+  ansible.builtin.user:
+    name: "{{ bootstrap_user }}"
+    groups: docker
+    append: true
+
+- name: Schedule daily prune of docker
+  when: docker_daily_prune
+  ansible.builtin.cron:
+    name: docker-prune
+    special_time: daily
+    job: >
+      docker system prune -af  --filter "until=$((30*24))h"

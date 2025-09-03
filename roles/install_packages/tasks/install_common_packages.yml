@@ -1,0 +1,23 @@
+---
+- name: Update and upgrade all available packages
+  when: upgrade_all_packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: true
+
+- name: Install common packages
+  ansible.builtin.apt:
+    # git: To clone repos
+    # nano: To quickly edit files
+    # htop: To quickly visualize resource usage
+    # gnupg: For docker's copy key step
+    # build-essential: To build Lodestar dependencies (i.e. bcrypto)
+    # python3: For docker's using ansible_python_interpreter: /usr/bin/python3
+    # jq: some custom scripts need this
+    # lz4: for extacting lz4 files
+    # aria2: for fast downloading of large files i.e snapshots
+    # zstd: for compressing and decompressing snapshots
+    # iftop: for checking data tx and rx of the server
+    name: [git, nano, htop, gnupg, build-essential, python3, apache2-utils, jq, lz4, aria2, zstd, iftop]
+    state: present
+    update_cache: true

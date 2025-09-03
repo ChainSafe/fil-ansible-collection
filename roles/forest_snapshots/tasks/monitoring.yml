@@ -1,0 +1,14 @@
+---
+- name: Template metrics server
+  ansible.builtin.template:
+    src: "monitoring/metrics-server.py.j2"
+    dest: "{{ forest.host.scripts_path }}/metrics-server.py"
+    mode: "0755"
+
+- name: Template Alloy config
+  ansible.builtin.template:
+    src: "monitoring/config.alloy.j2"
+    dest: "{{ grafana_alloy.config_path }}/config.alloy"
+    mode: '0640'
+  become: true
+  notify: Restart grafana-alloy

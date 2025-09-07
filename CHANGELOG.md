@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ChainSafe/fil-ansible-collection/compare/v0.3.0...0.3.1) (2025-09-07)
+
+
+### Bug Fixes
+
+* Ansible-galaxy doesnt tollerate v in tags ([f8c4169](https://github.com/ChainSafe/fil-ansible-collection/commit/f8c4169c9efcf218ff0c0d989ff874461ae17578))
+
 ## [0.3.0](https://github.com/ChainSafe/fil-ansible-collection/compare/v0.2.0...v0.3.0) (2025-09-07)
 
 

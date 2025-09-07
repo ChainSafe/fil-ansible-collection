@@ -1,20 +1,20 @@
 ---
-- name: Ensure required directories exist
+- name: Ensure Forest node directories exist
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
+    owner: "{{ ansible_user }}"
     mode: '0755'
   loop:
-    - "{{ docker_compose.project_path }}"
+    - "{{ forest.host.scripts_path }}"
     - "{{ forest.host.config_path }}"
     - "{{ forest.host.data_path }}"
-    - "{{ forest.host.scripts_path }}"
-    - "{{ grafana_alloy.config_path }}"
 
 - name: Deploy forest entrypoint
   ansible.builtin.template:
     src: "forest/forest.sh.j2"
     dest: "{{ forest.host.scripts_path }}/forest.sh"
+    owner: "{{ ansible_user }}"
     mode: '0755'
   notify: Restart forest
 
@@ -22,6 +22,7 @@
   ansible.builtin.template:
     src: "forest/{{ item }}.j2"
     dest: "{{ forest.host.config_path }}/{{ item }}"
+    owner: "{{ ansible_user }}"
     mode: '0755'
   loop:
     - config.toml

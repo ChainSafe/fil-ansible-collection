@@ -1,17 +1,43 @@
 ---
-- name: Template jobs
-  ansible.builtin.template:
-    src: "jobs/{{ item.src }}.j2"
-    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
-    mode: "0755"
+- name: Ensure Job directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: '0755'
   loop:
-    - { src: "helpers.sh" }
-    - { src: "metrics.sh" }
-    - { src: "download-snapshots.sh", notify: "Restart download-snapshots" }
-    - { src: "validate-snapshots.sh", notify: "Restart validate-snapshots" }
-    - { src: "compute-state.sh",      notify: "Restart compute-state" }
-    - { src: "build-snapshots.sh",    notify: "Restart build-snapshots" }
-    - { src: "upload-snapshots.sh",   notify: "Restart upload-snapshots" }
+    - "{{ forest.host.scripts_path }}"
+    - "{{ forest.host.snapshot_path }}"
+
+- name: Python packages
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
+    owner: "{{ ansible_user }}"
+    mode: '0755'
+  loop:
+    - { src: "rabbitmq.py" } # , notify: "Restart all" }
+    - { src: "metrics.py"} # , notify: "Restart all" }
+    - { src: "slack.py"} # , notify: "Restart all" }
+    - { src: "compute-state.py", notify: "Restart compute-state" }
+    - { src: "build-snapshots.py", notify: "Restart build-snapshots" }
+    - { src: "upload-snapshots.py", notify: "Restart upload-snapshots" }
   notify: "{{ item.notify | default(omit) }}"
   loop_control:
     label: "{{ item.src }}"
+
+# - name: Template jobs
+#  ansible.builtin.template:
+#    src: "jobs/{{ item.src }}.j2"
+#    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
+#    owner: "{{ ansible_user }}"
+#    mode: "0755"
+#  loop:
+#    - { src: "helpers.sh" }
+#    - { src: "metrics.sh" }
+#    - { src: "download-snapshots.sh", notify: "Restart download-snapshots" }
+#    - { src: "validate-snapshots.sh", notify: "Restart validate-snapshots" }
+#    - { src: "compute-state.sh", notify: "Restart compute-state" }
+#  notify: "{{ item.notify | default(omit) }}"
+#  loop_control:
+#    label: "{{ item.src }}"

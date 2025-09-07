@@ -6,7 +6,8 @@ trap 'echo "Interrupted, exiting..." >&2; exit 1' INT TERM
 
 # Constants
 readonly LITE_DEPTH=30000
-readonly SNAPSHOT_BASE_URL="https://forest-archive.chainsafe.dev"
+readonly BUCKET_NAME="{{ aws.bucket_name }}"
+readonly SNAPSHOT_BASE_URL="https://${BUCKET_NAME}.chainsafe.dev"
 export JOB_NAME="download-snapshots"
 
 source /scripts/helpers.sh
@@ -34,14 +35,14 @@ download_snapshot() {
   if aws s3 cp \
     --cli-read-timeout 300 \
     --cli-connect-timeout 60 \
-    "s3://forest-archive/${CHAIN}/lite/${file}" \
+    "s3://${BUCKET_NAME}/${CHAIN}/lite/${file}" \
     "${destination}"; then
       info "Successfully downloaded snapshot ${file}"
   else
     warning "Download snapshot ${file} failed with awscli, retrying with curl"
     pushd "$(dirname "${destination}")"
     if curl -fLC - -O --retry 10 --retry-delay 5 \
-        "https://forest-archive.chainsafe.dev/archive/forest/${CHAIN}/lite/${file}"; then
+        "${SNAPSHOT_BASE_URL}/archive/forest/${CHAIN}/lite/${file}"; then
       info "Successfully downloaded snapshot ${file} with curl"
     else
       increment_failure_counter
@@ -68,7 +69,7 @@ process_snapshot() {
 
     # Store validated height in cache
     rabbit_produce "downloaded" "${current_epoch}"
-    aws s3 cp "${snapshot_hash}" "s3://forest-archive/${CHAIN}/lite/"
+    aws s3 cp "${snapshot_hash}" "s3://${BUCKET_NAME}/${CHAIN}/lite/"
   else
     rabbit_produce "downloaded-failed" "${current_epoch}"
     error "Failed to download ${snapshot_name}"

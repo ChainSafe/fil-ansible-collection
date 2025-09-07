@@ -14,6 +14,12 @@
     groups: docker
     append: true
 
+- name: Install aliases for docker
+  ansible.builtin.copy:
+    src: files/docker-aliases.sh
+    dest: "/home/{{ bootstrap_user }}/.bash_aliases"
+    mode: '0644'
+
 - name: Schedule daily prune of docker
   when: docker_daily_prune
   ansible.builtin.cron:

@@ -16,26 +16,4 @@
   ansible.builtin.import_tasks: jobs.yml
 
 - name: Configure Docker Compose
-  block:
-    - name: Template docker-compose env
-      ansible.builtin.template:
-        src: env.j2
-        dest: "{{ docker_compose.project_path }}/.env"
-        owner: "{{ ansible_user }}"
-        mode: '0640'
-      no_log: true
-
-    - name: Deploy docker-compose template
-      ansible.builtin.template:
-        src: docker-compose.yml.j2
-        dest: "{{ docker_compose.project_path }}/docker-compose.yml"
-        owner: "{{ ansible_user }}"
-        mode: '0644'
-      check_mode: false
-
-    - name: Deploy with docker compose
-      community.docker.docker_compose_v2:
-        project_src: "{{ docker_compose.project_path }}"
-        state: present
-        remove_orphans: true
-        profiles: "{{ docker_compose.profiles }}"
+  ansible.builtin.import_tasks: compose.yml

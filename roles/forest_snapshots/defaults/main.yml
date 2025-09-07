@@ -2,6 +2,7 @@ aws:
   endpoint_url: "https://2238a825c5aca59233eab1f221f7aefb.r2.cloudflarestorage.com"
   access_key_id: ""
   secret_access_key: ""
+  bucket_name: "forest-archive"
 
 external_disk:
   raid_devices: ""
@@ -20,6 +21,7 @@ forest:
     name: ghcr.io/chainsafe/forest
     tag: latest-fat
   node_type: "archive"
+  snapshots_format: v1
   host:
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
     data_path: "/data/forest"
@@ -32,32 +34,34 @@ forest:
     snapshot_path: "/home/forest/snapshots"
     metrics_path: "/data/metrics"
   compute:
-    replicas: 0
+    enabled: false
     start_epoch: 0
     batch_size: 100
   download_snapshots:
-    replicas: 0
+    enabled: false
     start_epoch: 0
   validate_snapshots:
-    replicas: 0
+    enabled: false
     start_epoch: 0
   build_snapshots:
-    replicas: 1
+    enabled: false
     start_epoch: 0
+    delay: "{{ 6 * 60 * 60 }}"
+    latest: false
   upload_snapshots:
-    replicas: 1
+    enabled: false
     start_epoch: 0
   metrics:
     port: 6116
 
 rabbitmq:
-  replicas: 1
+  enabled: true
   user: "guest"
   password: "password"
   data_path: "/data/rabbitmq/{{ network }}"
 
 grafana_alloy:
-  replicas: 1
+  enabled: true
   config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ network }}"
   image: "grafana/alloy:latest"
   api_key: "GRAFANA_CLOUD_API_KEY"
@@ -70,3 +74,4 @@ grafana_alloy:
 
 slack:
   token: "SLACK_TOKEN"
+  channel: "#forest-dump"

@@ -61,13 +61,7 @@ process_snapshot() {
 }
 
 process_epochs() {
-  local last_validated_epoch="$1"
-  local last_downloaded_epoch
-  local last_built_epoch
   local full_start_time=${SECONDS}
-  local current=$((last_validated_epoch + LITE_DEPTH))
-  update_total_epochs_metric "$END_EPOCH"
-
   while true; do
     last_downloaded_epoch=$(rabbit_consume_latest_with_default "downloaded" "{{ forest.download_snapshots.start_epoch }}")
     last_built_epoch=$(rabbit_consume_latest_with_default "created" "{{ forest.build_snapshots.start_epoch }}")
@@ -97,12 +91,9 @@ main() {
   start_metrics_server
 
   rabbit_setup "validated"
-  local last_validated_epoch
-  last_validated_epoch=$(rabbit_consume_latest_with_default "validated" "{{ forest.validate_snapshots.start_epoch }}")
-  last_validated_epoch=$((last_validated_epoch - (last_validated_epoch % LITE_DEPTH)))
 
   init_folders
-  process_epochs "$last_validated_epoch"
+  process_epochs
 }
 
 main

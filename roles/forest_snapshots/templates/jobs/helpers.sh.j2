@@ -44,6 +44,7 @@ readonly RABBITMQ_CLIENT="{{ forest.container.scripts_path }}/rabbitmq.py"
 readonly FULL_SNAPSHOTS_DIR="{{ forest.container.snapshot_path }}/full"
 readonly LITE_SNAPSHOT_DIR="{{ forest.container.snapshot_path }}/lite"
 readonly DIFF_SNAPSHOT_DIR="{{ forest.container.snapshot_path }}/diff"
+readonly LATEST_SNAPSHOT_DIR="{{ forest.container.snapshot_path }}/latest"
 
 readonly FOREST_IP=$(getent hosts "${FOREST_HOST}" | awk '{ print $1 }')
 readonly FULLNODE_API_INFO="$(cat "{{ forest.container.data_path }}/token"):/ip4/${FOREST_IP}/tcp/2345/http"

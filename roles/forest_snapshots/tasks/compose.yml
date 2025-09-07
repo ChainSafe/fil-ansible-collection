@@ -1,0 +1,26 @@
+- name: Ensure Docker compose project directory exist
+  ansible.builtin.file:
+    path: "{{ docker_compose.project_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Template docker-compose env
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ docker_compose.project_path }}/.env"
+    owner: "{{ ansible_user }}"
+    mode: '0640'
+  no_log: true
+
+- name: Deploy docker-compose template
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ docker_compose.project_path }}/docker-compose.yml"
+    owner: "{{ ansible_user }}"
+    mode: '0644'
+
+- name: Deploy with docker compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose.project_path }}"
+    state: present
+    remove_orphans: true

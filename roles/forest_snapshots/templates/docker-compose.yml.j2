@@ -6,7 +6,7 @@ services:
     entrypoint: /bin/bash
     command: [ "/scripts/forest.sh" ]
     environment:
-      FOREST_F3_SIDECAR_FFI_ENABLED: '0'
+      FOREST_F3_SIDECAR_FFI_ENABLED: {{ '1' if forest.f3_enabled_sidecar else '0' }}
     restart: always
     user: root
     volumes:
@@ -14,11 +14,14 @@ services:
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "{{ forest.host.config_path }}:{{ forest.container.config_path }}:ro"
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
+{#    cap_add:#}
+{#      - NET_ADMIN#}
+{#    network_mode: bridge#}
+{#    sysctls:#}
+{#      net.core.rmem_max: "25000000"#}
+{#      net.core.wmem_max: "25000000"#}
+{#      net.core.rmem_default: "25000000"#}
+{#      net.core.wmem_default: "25000000"#}
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -29,7 +32,7 @@ services:
     hostname: rabbitmq
     container_name: rabbitmq-{{ network }}
     deploy:
-      replicas: {{ rabbitmq.replicas }}
+      replicas: {{ 1 if rabbitmq.enabled else 0 }}
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
@@ -49,20 +52,15 @@ services:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ forest.compute.replicas }}
-    entrypoint: /bin/bash
-    command: [ "/scripts/compute-state.sh" ]
+      replicas: {{ 1 if forest.compute.enabled else 0 }}
+    entrypoint: python3
+    command: [ "/scripts/compute-state.py" ]
     env_file: [ ".env" ]
     environment:
-      FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
-      RABBITMQ_HOST: rabbitmq-{{ network }}
-    restart: on-failure
+      DEFAULT_START_EPOCH: {{ forest.compute.start_epoch }}
+      COMPUTE_BATCH_SIZE: {{ forest.compute.batch_size }}
+    restart: on-failure:5
     user: root
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -72,6 +70,7 @@ services:
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
       - "{{ forest.host.data_path }}/token:{{ forest.container.data_path }}/token:ro"
       - "metrics:{{ forest.container.metrics_path }}"
+
   validate-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
     container_name: validate-snapshots-{{ network }}
@@ -80,20 +79,15 @@ services:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ forest.validate_snapshots.replicas }}
+      replicas: {{ 1 if forest.validate_snapshots.enabled else 0 }}
     entrypoint: /bin/bash
     command: [ "/scripts/validate-snapshots.sh" ]
     env_file: [ ".env" ]
     environment:
       FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
       RABBITMQ_HOST: rabbitmq
-    restart: on-failure
+    restart: on-failure:5
     user: root
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -104,6 +98,7 @@ services:
       - "{{ forest.host.data_path }}/token:{{ forest.container.data_path }}/token:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+
   build-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
     container_name: build-snapshots-{{ network }}
@@ -112,20 +107,15 @@ services:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ forest.build_snapshots.replicas }}
-    entrypoint: /bin/bash
-    command: [ "/scripts/build-snapshots.sh" ]
+      replicas: {{ 1 if forest.build_snapshots.enabled else 0 }}
+    entrypoint: python3
+    command: ["/scripts/build-snapshots.py"]
     env_file: [ ".env" ]
     environment:
-      FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
-      RABBITMQ_HOST: rabbitmq
-    restart: on-failure
+      DEFAULT_START_EPOCH: {{ forest.build_snapshots.start_epoch }}
+      BUILD_DELAY: {{ forest.build_snapshots.delay }}
+    restart: on-failure:5
     user: root
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -136,6 +126,7 @@ services:
       - "{{ forest.host.data_path }}/token:{{ forest.container.data_path }}/token:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+
   download-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
     container_name: download-snapshots-{{ network }}
@@ -144,20 +135,15 @@ services:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ forest.download_snapshots.replicas }}
+      replicas: {{ 1 if forest.download_snapshots.enabled else 0 }}
     entrypoint: /bin/bash
     command: [ "/scripts/download-snapshots.sh" ]
     env_file: [ ".env" ]
     environment:
       FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
       RABBITMQ_HOST: rabbitmq
-    restart: on-failure
+    restart: on-failure:5
     user: root
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -168,6 +154,7 @@ services:
       - "{{ forest.host.data_path }}/token:{{ forest.container.data_path }}/token:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+
   upload-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
     container_name: upload-snapshots-{{ network }}
@@ -176,20 +163,12 @@ services:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ forest.upload_snapshots.replicas }}
-    entrypoint: /bin/bash
-    command: [ "/scripts/upload-snapshots.sh" ]
+      replicas: {{ 1 if forest.upload_snapshots.enabled else 0 }}
+    entrypoint: python3
+    command: [ "/scripts/upload-snapshots.py" ]
     env_file: [ ".env" ]
-    environment:
-      FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
-      RABBITMQ_HOST: rabbitmq
-    restart: on-failure
+    restart: on-failure:5
     user: root
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -200,12 +179,13 @@ services:
       - "{{ forest.host.data_path }}/token:{{ forest.container.data_path }}/token:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+
   grafana-alloy:
     image: grafana/alloy:latest
-    container_name: grafana-alloy
+    container_name: grafana-alloy-{{ network }}
     restart: always
     deploy:
-      replicas: {{ grafana_alloy.replicas }}
+      replicas: {{ 1 if grafana_alloy.enabled else 0 }}
     environment:
       METRICS_ENDPOINT: "{{ grafana_alloy.metrics.endpoint }}"
       METRICS_USERNAME: "{{ grafana_alloy.metrics.username }}"

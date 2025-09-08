@@ -16,16 +16,16 @@
     owner: "{{ ansible_user }}"
     mode: '0755'
   loop:
-    - { src: "rabbitmq.py", notify: "Restart all" }
-    - { src: "metrics.py", notify: "Restart all" }
-    - { src: "slack.py", notify: "Restart all" }
-    - { src: "forest_helpers.py", notify: "Restart all" }
-    - { src: "logger_setup.py", notify: "Restart all" }
-    - { src: "slack.py", notify: "Restart all" }
-    - { src: "compute-state.py", notify: "Restart compute-state" }
-    - { src: "build-snapshots.py", notify: "Restart build-snapshots" }
-    - { src: "upload-snapshots.py", notify: "Restart upload-snapshots" }
-    - { src: "validate-snapshots.py", notify: "Restart validate-snapshots" }
+    - { src: "rabbitmq.py"}
+    - { src: "metrics.py"}
+    - { src: "slack.py"}
+    - { src: "forest_helpers.py"}
+    - { src: "logger_setup.py"}
+    - { src: "slack.py"}
+    - { src: "compute_state.py", notify: "Restart compute-state" }
+    - { src: "build_snapshots.py", notify: "Restart build-snapshots" }
+    - { src: "upload_snapshots.py", notify: "Restart upload-snapshots" }
+    - { src: "validate_snapshots.py", notify: "Restart validate-snapshots" }
   notify: "{{ item.notify | default(omit) }}"
   loop_control:
     label: "{{ item.src }}"

@@ -1,14 +1,15 @@
 import hashlib
 import os
-import time
 import threading
+import time
+
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from logger_setup import setup_logger
-from rabbitmq import RabbitMQClient, RabbitQueue
 from metrics import Metrics
+from rabbitmq import RabbitMQClient, RabbitQueue
 
 logger = setup_logger(os.path.basename(__file__))
 
@@ -57,7 +58,7 @@ KB = 1024
 MB = KB * KB
 
 
-def r2_upload_snapshot(file_path: str) -> bool:
+def r2_upload_artifact(file_path: str) -> bool:
     """Upload the snapshot file and checksum to S3."""
     try:
         basename = os.path.basename(file_path)
@@ -80,14 +81,7 @@ def r2_upload_snapshot(file_path: str) -> bool:
                         use_threads=True
                     )
                 )
-                logger.info(f"✅ Snapshot {file_path} uploaded to s3://{BUCKET_NAME}/{key_prefix}")
-                # TODO: apply as validation logic
-                # file_sha256 = file_path + ".sha256sum"
-                # if not os.path.exists(file_sha256):
-                #     checksum = sha256sum(file_path)
-                #     with open(file_sha256, "w") as f:
-                #         f.write(checksum + "\n")
-                # s3.upload_file(file_sha256, BUCKET_NAME, key_prefix + basename + ".sha256sum")
+                logger.info(f"✅ File {file_path} uploaded to s3://{BUCKET_NAME}/{key_prefix}")
                 return True
             else:
                 # Other errors (permission, etc.)
@@ -109,7 +103,7 @@ def upload_snapshot(snapshot_path: str) -> bool:
     """Wrapper around upload that also produces RabbitMQ status messages."""
     result = {"success": False}
     with metrics.track_upload():
-        result["success"] = r2_upload_snapshot(snapshot_path)
+        result["success"] = r2_upload_artifact(snapshot_path)
     return result["success"]
 
 

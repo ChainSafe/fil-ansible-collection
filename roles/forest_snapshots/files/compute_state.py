@@ -1,12 +1,11 @@
 import os
-import socket
-import time
 import subprocess
+import time
 
+from forest_helpers import get_api_info, get_current_epoch
 from logger_setup import setup_logger
-from forest_helpers import get_current_epoch
-from rabbitmq import RabbitMQClient, RabbitQueue
 from metrics import Metrics
+from rabbitmq import RabbitMQClient, RabbitQueue
 from slack import slack_notify
 
 logger = setup_logger(os.path.basename(__file__))
@@ -27,12 +26,6 @@ rabbit.setup([RabbitQueue.COMPUTE])
 # Initialize metrics
 metrics = Metrics(prefix="forest_compute_state_", port=METRICS_PORT)
 
-# Forest connection
-forest_ip = socket.gethostbyname(os.getenv("FOREST_HOST"))
-with open(os.getenv("FOREST_TOKEN_PATH"), "r") as f:
-    forest_token = f.read()
-FULLNODE_API_INFO = f"{forest_token}:/ip4/{forest_ip}/tcp/2345/http"
-
 
 def compute_state(epoch: int):
     """Compute state for a given epoch."""
@@ -46,7 +39,7 @@ def compute_state(epoch: int):
                     "--n-epochs", str(COMPUTE_BATCH_SIZE)
                 ],
                 env={
-                    "FULLNODE_API_INFO": FULLNODE_API_INFO,
+                    "FULLNODE_API_INFO": get_api_info(),
                     "RUST_LOG": "info"
                 },
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
@@ -61,11 +54,11 @@ def compute_state(epoch: int):
                     for epoch in range(epoch, epoch + COMPUTE_BATCH_SIZE):
                         proc = subprocess.Popen(
                             [
-                                "forest-cli", "state", "compute",
+                                "/usr/local/bin/forest-cli", "state", "compute",
                                 "--epoch", str(epoch),
                             ],
                             env={
-                                "FULLNODE_API_INFO": FULLNODE_API_INFO,
+                                "FULLNODE_API_INFO": get_api_info(),
                                 "RUST_LOG": "info"
                             },
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
@@ -91,7 +84,7 @@ def compute_state(epoch: int):
 
 def main():
     historic_start_epoch = 0
-    current_epoch = get_current_epoch(FULLNODE_API_INFO)
+    current_epoch = get_current_epoch()
     epochs_left = current_epoch - historic_start_epoch
     # Diff snapshots, lite snapshots and full snapshots
     metrics.set_total(epochs_left)

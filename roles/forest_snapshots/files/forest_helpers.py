@@ -1,17 +1,27 @@
 import json
+import os
+import socket
 import subprocess
+
 from logger_setup import setup_logger
 
 logger = setup_logger(__name__)
 
 
-def get_genesis_timestamp(api_info: str) -> int:
+def get_api_info() -> str:
+    forest_ip = socket.gethostbyname(os.getenv("FOREST_HOST"))
+    with open(os.getenv("FOREST_TOKEN_PATH"), "r") as f:
+        forest_token = f.read()
+    return f"{forest_token}:/ip4/{forest_ip}/tcp/2345/http"
+
+
+def get_genesis_timestamp() -> int:
     """Fetch genesis timestamp."""
     try:
         result = subprocess.run(
             ["/usr/local/bin/forest-cli", "chain", "genesis"],
             env={
-                "FULLNODE_API_INFO": api_info
+                "FULLNODE_API_INFO": get_api_info()
             },
             capture_output=True, text=True, check=True
         )
@@ -25,13 +35,13 @@ def get_genesis_timestamp(api_info: str) -> int:
         raise
 
 
-def get_current_epoch(api_info: str) -> int:
+def get_current_epoch() -> int:
     """Fetch current chain head epoch."""
     try:
         result = subprocess.run(
             ["/usr/local/bin/forest-cli", "chain", "head", "--format", "json"],
             env={
-                "FULLNODE_API_INFO": api_info
+                "FULLNODE_API_INFO": get_api_info()
             },
             capture_output=True, text=True, check=True)
         head_info = json.loads(result.stdout)

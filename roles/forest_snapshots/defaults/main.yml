@@ -38,9 +38,6 @@ forest:
     enabled: false
     start_epoch: 0
     batch_size: 100
-  download_snapshots:
-    enabled: false
-    start_epoch: 0
   validate_snapshots:
     enabled: false
     start_epoch: 0

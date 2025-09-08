@@ -1,7 +1,8 @@
-import pika
 import os
-from typing import Optional, Tuple
 from enum import Enum
+from typing import Optional, Tuple
+
+import pika
 
 from logger_setup import setup_logger
 

@@ -22,12 +22,6 @@
     services:
       - validate-snapshots
     state: restarted
-- name: Restart download-snapshots
-  community.docker.docker_compose_v2:
-    project_src: "{{ docker_compose.project_path }}"
-    services:
-      - download-snapshots
-    state: restarted
 - name: Restart upload-snapshots
   community.docker.docker_compose_v2:
     project_src: "{{ docker_compose.project_path }}"

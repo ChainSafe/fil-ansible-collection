@@ -2,13 +2,13 @@ import hashlib
 import json
 import os
 import subprocess
-import time
 import threading
+import time
 
 from forest_helpers import get_api_info
 from logger_setup import setup_logger
-from rabbitmq import RabbitMQClient, RabbitQueue
 from metrics import Metrics
+from rabbitmq import RabbitMQClient, RabbitQueue
 from upload_snapshots import r2_upload_artifact
 
 logger = setup_logger(os.path.basename(__file__))

@@ -1,15 +1,14 @@
 import os
 import re
-import time
-import socket
 import subprocess
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp
 from logger_setup import setup_logger
-from forest_helpers import get_current_epoch, get_genesis_timestamp
-from rabbitmq import RabbitMQClient, RabbitQueue
 from metrics import Metrics
+from rabbitmq import RabbitMQClient, RabbitQueue
 from slack import slack_notify
 
 logger = setup_logger(os.path.basename(__file__))
@@ -51,12 +50,6 @@ rabbit_setup.close()
 
 metrics = Metrics(prefix="forest_build_snapshot_", port=METRICS_PORT)
 
-# Forest connection
-forest_ip = socket.gethostbyname(os.getenv("FOREST_HOST"))
-with open(os.getenv("FOREST_TOKEN_PATH"), "r") as f:
-    forest_token = f.read()
-FULLNODE_API_INFO = f"{forest_token}:/ip4/{forest_ip}/tcp/2345/http"
-
 
 def secs_to_dhms(seconds):
     """Convert seconds to human-readable dhms."""
@@ -74,7 +67,7 @@ def secs_to_dhms(seconds):
 def epoch_to_date(epoch: int):
     """Convert epoch to date."""
     return datetime.fromtimestamp(
-        get_genesis_timestamp(FULLNODE_API_INFO) + epoch * SECONDS_PER_EPOCH, tz=timezone.utc
+        get_genesis_timestamp() + epoch * SECONDS_PER_EPOCH, tz=timezone.utc
     ).strftime("%Y-%m-%d")
 
 
@@ -110,7 +103,7 @@ def build_snapshot(
     folder: str,
     depth: int,
     rabbit: RabbitMQClient,
-    archive: bool = False,
+    full_snapshot: str = None,
     diff: bool = False
 ):
     """Export snapshot."""
@@ -121,24 +114,20 @@ def build_snapshot(
     start_time = time.time()
     if os.path.exists(snapshot):
         logger.warning(f"File {snapshot} exists. Skipping")
-        return
+        return snapshot, True
 
     return_code = None
     try:
         # Export snapshot via forest-cli
         with metrics.track_processing():
             args = []
-            if archive:
+            if full_snapshot:
                 args.extend([
                     "/usr/local/bin/forest-tool", "archive", "export",
                     "--epoch", str(epoch),
                     "--output-path", snapshot
                 ])
-                if diff:
-                    args.extend([
-                        "--diff", str(epoch - depth),
-                        "--diff-depth", str(STATE_ROOTS),
-                    ])
+                args.append(full_snapshot)
             else:
                 args.extend([
                     "/usr/local/bin/forest-cli", "snapshot", "export",
@@ -147,12 +136,17 @@ def build_snapshot(
                     "--format", SNAPSHOT_FORMAT,
                     "--output-path", snapshot
                 ])
+                if diff:
+                    args.extend([
+                        "--diff", str(epoch - depth),
+                        "--diff-depth", str(STATE_ROOTS),
+                    ])
             os.makedirs(folder, exist_ok=True)
             proc = subprocess.Popen(
                 args=args,
                 cwd=folder,
                 env={
-                    "FULLNODE_API_INFO": FULLNODE_API_INFO,
+                    "FULLNODE_API_INFO": get_api_info(),
                     "RUST_LOG": "info"
                 },
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
@@ -177,18 +171,23 @@ def build_snapshot(
                 slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success")
             elif snapshot_type == "diff":
                 rabbit.produce(RabbitQueue.SNAPSHOT_DIFF, snapshot)
+            return snapshot, True
     except Exception as e:
         metrics.inc_failure()
         logger.error(f"Error running command: {e}")
+        raise
     except BaseException as e:
         metrics.inc_failure()
         logger.error(f"Error running command: {e}")
+        raise
+    finally:
+        return None, False
 
 
 def build_historic_snapshots():
     """Build historic snapshots for each epoch in the past."""
     historic_start_epoch = 0
-    current_epoch = get_current_epoch(FULLNODE_API_INFO)
+    current_epoch = get_current_epoch()
     epochs_left = current_epoch - historic_start_epoch
     # Diff snapshots, lite snapshots and full snapshots
     metrics.set_total(epochs_left // DIFF_DEPTH + (epochs_left // LITE_DEPTH) * 2)
@@ -224,19 +223,21 @@ def build_historic_snapshots():
         with RabbitMQClient() as rabbit:
             logger.info(f"Processing epochs {epoch - LITE_DEPTH} to {epoch} on {CHAIN}")
             # Full Snapshot
-            build_snapshot(epoch, FULL_SNAPSHOTS_DIR, LITE_DEPTH, rabbit)
-            # Lite Snapshot
-            build_snapshot(epoch, LITE_SNAPSHOT_DIR, LITE_DEPTH, rabbit, archive=True)
-            # Diff Snapshots
-            for diff_epoch in range(epoch - LITE_DEPTH, epoch, DIFF_DEPTH):
-                build_snapshot(diff_epoch, DIFF_SNAPSHOT_DIR, DIFF_DEPTH, rabbit, archive=True, diff=True)
+            full_snapshot, success = build_snapshot(epoch, FULL_SNAPSHOTS_DIR, LITE_DEPTH, rabbit)
+            if success:
+                # Lite Snapshot
+                build_snapshot(epoch, LITE_SNAPSHOT_DIR, STATE_ROOTS, rabbit, full_snapshot=full_snapshot)
+                # Diff Snapshots
+                for diff_epoch in range(epoch - LITE_DEPTH, epoch, DIFF_DEPTH):
+                    build_snapshot(diff_epoch, DIFF_SNAPSHOT_DIR, DIFF_DEPTH, rabbit, full_snapshot=full_snapshot,
+                                   diff=True)
 
 
 def build_latest_snapshots():
     """Build the latest snapshot for the current epoch."""
     while True:
         with RabbitMQClient() as rabbit:
-            epoch = get_current_epoch(FULLNODE_API_INFO)
+            epoch = get_current_epoch()
             _, previous_built_snapshot = rabbit.consume(RabbitQueue.SNAPSHOT_LATEST, latest=True)
             previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
             if (epoch - previous_epoch) > 10:

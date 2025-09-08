@@ -2,7 +2,7 @@
 ##### docker task vars #####
 # Otherwise sudo will be required to do any docker action
 docker_users:
-  - "{{ bootstrap_user }}"
+  - "{{ ansible_user }}"
 
 docker_daily_prune: true
 

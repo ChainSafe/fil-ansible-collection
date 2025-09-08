@@ -1,8 +1,10 @@
+import os
+
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
 from logger_setup import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger(os.path.basename(__file__))
 
 
 class Metrics:

@@ -136,15 +136,13 @@ def main():
     # Initialize queue
     rabbit_setup = RabbitMQClient()
     rabbit_setup.setup([
-        RabbitQueue.SNAPSHOT,
-        RabbitQueue.SNAPSHOT_DIFF,
-        RabbitQueue.SNAPSHOT_LATEST,
+        RabbitQueue.UPLOAD,
         RabbitQueue.VALIDATE,
         RabbitQueue.VALIDATE_FAILED
     ])
     rabbit_setup.close()
     while True:
-        for queue in [RabbitQueue.SNAPSHOT, RabbitQueue.SNAPSHOT_DIFF, RabbitQueue.SNAPSHOT_LATEST]:
+        for queue in [RabbitQueue.UPLOAD]:
             with RabbitMQClient() as rabbit:
                 delivery_tag, snapshot_path = rabbit.consume(queue)
                 if delivery_tag:

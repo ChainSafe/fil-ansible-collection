@@ -22,7 +22,8 @@ forest:
     tag: latest-fat
   node_type: "archive"
   snapshots_format: v1
-  log_level: "info" # debug, info, warning, error, critical
+  log_level: "info" # debug, info, warning, error
+  rust_log_level: "warn" # debug, info, warn, error, off
   host:
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
     data_path: "/data/forest"

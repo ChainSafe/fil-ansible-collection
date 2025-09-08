@@ -5,7 +5,7 @@ from slack_sdk.errors import SlackApiError
 
 from logger_setup import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger(os.path.basename(__file__))
 
 SLACK_TOKEN = os.getenv("SLACK_TOKEN")  # Bot token
 SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#forest-dump")  # Channel ID or name, e.g., "#alerts"

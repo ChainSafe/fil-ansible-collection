@@ -5,7 +5,7 @@ import subprocess
 
 from logger_setup import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger(os.path.basename(__file__))
 
 
 def get_api_info() -> str:

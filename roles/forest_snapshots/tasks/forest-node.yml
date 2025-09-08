@@ -10,6 +10,13 @@
     - "{{ forest.host.config_path }}"
     - "{{ forest.host.data_path }}"
 
+- name: Ensure forest token exists
+  ansible.builtin.file:
+    path: "{{ forest.host.data_path }}/token"
+    state: file
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+
 - name: Deploy forest entrypoint
   ansible.builtin.template:
     src: "forest/forest.sh.j2"

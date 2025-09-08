@@ -10,7 +10,7 @@ RABBIT_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBIT_USER = os.getenv("RABBITMQ_USER", "user")
 RABBIT_PASS = os.getenv("RABBITMQ_PASS", "password")
 
-logger = setup_logger(__name__)
+logger = setup_logger(os.path.basename(__file__))
 
 
 class RabbitQueue(Enum):

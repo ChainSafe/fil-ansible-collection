@@ -10,9 +10,10 @@
 
 - name: Add ansible user to docker group
   ansible.builtin.user:
-    name: "{{ bootstrap_user }}"
+    name: "{{ item }}"
     groups: docker
     append: true
+  loop: "{{ docker_users }}"
 
 - name: Install aliases for docker
   ansible.builtin.copy:

@@ -238,8 +238,10 @@ def build_latest_snapshots():
     while True:
         with RabbitMQClient() as rabbit:
             epoch = get_current_epoch()
+            previous_epoch = 0
             _, previous_built_snapshot = rabbit.consume(RabbitQueue.SNAPSHOT_LATEST, latest=True)
-            previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
+            if previous_built_snapshot:
+                previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
             if (epoch - previous_epoch) > 10:
                 logger.info(f"Processing epoch {epoch} on {CHAIN}")
                 build_snapshot(epoch, LATEST_SNAPSHOT_DIR, LATEST_DEPTH, rabbit)

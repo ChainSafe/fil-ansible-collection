@@ -19,20 +19,7 @@ METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
 # Config
 QUEUE_WAIT_TIMEOUT = 30 * 60  # 30 minutes
 TIMEOUT_SECONDS = 40 * 60  # 40 minutes
-
-# Initialize queue
-rabbit_setup = RabbitMQClient()
-rabbit_setup.setup([
-    RabbitQueue.SNAPSHOT,
-    RabbitQueue.SNAPSHOT_DIFF,
-    RabbitQueue.SNAPSHOT_LATEST,
-    RabbitQueue.VALIDATE,
-    RabbitQueue.VALIDATE_FAILED
-])
-rabbit_setup.close()
-
-# Initialize metrics
-metrics = Metrics(prefix="forest_validate_snapshot_", port=METRICS_PORT)
+metrics = None
 
 
 def gather_archive_metadata(archive_metadata: list[str], archive_info: list[str]):
@@ -146,7 +133,16 @@ def process_snapshot(delivery_tag: int, snapshot_path: str, rabbit: RabbitMQClie
 
 
 def main():
-    logger.info("🐇 Waiting for snapshots...")
+    # Initialize queue
+    rabbit_setup = RabbitMQClient()
+    rabbit_setup.setup([
+        RabbitQueue.SNAPSHOT,
+        RabbitQueue.SNAPSHOT_DIFF,
+        RabbitQueue.SNAPSHOT_LATEST,
+        RabbitQueue.VALIDATE,
+        RabbitQueue.VALIDATE_FAILED
+    ])
+    rabbit_setup.close()
     while True:
         for queue in [RabbitQueue.SNAPSHOT, RabbitQueue.SNAPSHOT_DIFF, RabbitQueue.SNAPSHOT_LATEST]:
             with RabbitMQClient() as rabbit:
@@ -165,4 +161,5 @@ def main():
 
 
 if __name__ == "__main__":
+    metrics = Metrics(prefix="forest_validate_snapshot_", port=METRICS_PORT)
     main()

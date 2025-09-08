@@ -26,21 +26,11 @@ TIMEOUT_SECONDS = 40 * 60  # 40 minutes
 S3_READ_TIMEOUT = 300
 S3_CONNECT_TIMEOUT = 60
 
-# Initialize queue
-rabbit_setup = RabbitMQClient()
-rabbit_setup.setup([
-    RabbitQueue.SNAPSHOT,
-    RabbitQueue.SNAPSHOT_LATEST,
-    RabbitQueue.SNAPSHOT_DIFF,
-    RabbitQueue.UPLOAD,
-    RabbitQueue.UPLOAD_FAILED
-])
-rabbit_setup.close()
-
 # Initialize metrics
-metrics = Metrics(prefix="forest_upload_snapshot_", port=METRICS_PORT)
+metrics = None
 
 # Initialize S3
+s3 = None
 s3 = boto3.client(
     "s3",
     endpoint_url=os.getenv("R2_ENDPOINT_URL"),
@@ -135,7 +125,16 @@ def process_snapshot(delivery_tag: int, snapshot_path: str, rabbit: RabbitMQClie
 
 
 def main():
-    logger.info("🐇 Waiting for snapshots...")
+    # Initialize queue
+    rabbit_setup = RabbitMQClient()
+    rabbit_setup.setup([
+        RabbitQueue.SNAPSHOT,
+        RabbitQueue.SNAPSHOT_LATEST,
+        RabbitQueue.SNAPSHOT_DIFF,
+        RabbitQueue.UPLOAD,
+        RabbitQueue.UPLOAD_FAILED
+    ])
+    rabbit_setup.close()
     while True:
         for queue in [RabbitQueue.SNAPSHOT, RabbitQueue.SNAPSHOT_DIFF, RabbitQueue.SNAPSHOT_LATEST]:
             with RabbitMQClient() as rabbit:
@@ -155,4 +154,5 @@ def main():
 
 
 if __name__ == "__main__":
+    metrics = Metrics(prefix="forest_upload_snapshot_", port=METRICS_PORT)
     main()

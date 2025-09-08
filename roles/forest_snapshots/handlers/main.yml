@@ -10,17 +10,17 @@
     services:
       - compute-state
     state: restarted
-- name: Restart validate-snapshots
-  community.docker.docker_compose_v2:
-    project_src: "{{ docker_compose.project_path }}"
-    services:
-      - validate-snapshots
-    state: restarted
 - name: Restart build-snapshots
   community.docker.docker_compose_v2:
     project_src: "{{ docker_compose.project_path }}"
     services:
       - build-snapshots
+    state: restarted
+- name: Restart validate-snapshots
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose.project_path }}"
+    services:
+      - validate-snapshots
     state: restarted
 - name: Restart download-snapshots
   community.docker.docker_compose_v2:
@@ -39,4 +39,13 @@
     project_src: "{{ docker_compose.project_path }}"
     services:
       - grafana-alloy
+    state: restarted
+- name: Restart all
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker_compose.project_path }}"
+    services:
+      - compute-state
+      - build-snapshots
+      - validate-snapshots
+      - upload-snapshots
     state: restarted

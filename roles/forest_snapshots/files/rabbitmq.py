@@ -1,14 +1,26 @@
-#!/usr/bin/env python3
 import pika
-import logging
 import os
 from typing import Optional, Tuple
+from enum import Enum
+
+from logger_setup import setup_logger
 
 RABBIT_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBIT_USER = os.getenv("RABBITMQ_USER", "user")
 RABBIT_PASS = os.getenv("RABBITMQ_PASS", "password")
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
+
+
+class RabbitQueue(Enum):
+    COMPUTE = "compute"
+    SNAPSHOT = "snapshot"
+    SNAPSHOT_LATEST = "snapshot-latest"
+    SNAPSHOT_DIFF = "snapshot-diff"
+    VALIDATE = "validate"
+    VALIDATE_FAILED = "validate-failed"
+    UPLOAD = "upload"
+    UPLOAD_FAILED = "upload-failed"
 
 
 class RabbitMQClient:
@@ -30,10 +42,8 @@ class RabbitMQClient:
 
     def _ensure_open(self):
         """Ensure connection/channel are available and open."""
-        if not self.connection or self.connection.is_closed:
-            raise RuntimeError("RabbitMQ connection is not open. Call connect() first.")
-        if not self.channel or self.channel.is_closed:
-            raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
+        if (not self.connection or self.connection.is_closed) or (not self.channel or self.channel.is_closed):
+            self.connect()
 
     def connect(self):
         """Connect to RabbitMQ and open a channel."""
@@ -70,10 +80,11 @@ class RabbitMQClient:
         finally:
             self.connection = None
 
-    def setup(self, queues: list[str] = None):
+    def setup(self, queues: list[RabbitQueue] = None):
         """Create exchanges, queues and bindings."""
         self._ensure_open()
-        for queue in queues:
+        for queue_enum in queues:
+            queue = queue_enum.value
             queue_x = queue
             queue_head = f"{queue}-head"
             queue_dlx = f"{queue}.dlx"
@@ -98,27 +109,30 @@ class RabbitMQClient:
             self.channel.exchange_declare(exchange=queue_dlx, exchange_type="fanout", durable=True)
             self.channel.queue_declare(queue=queue_dlq, durable=True)
             self.channel.queue_bind(exchange=queue_dlx, queue=queue_dlq)
+        self.close()
 
-    def produce(self, exchange: str, message: str):
+    def produce(self, exchange: RabbitQueue, message: str):
         """Publish a message to an exchange."""
         self._ensure_open()
         try:
             self.channel.basic_publish(
-                exchange=exchange,
-                routing_key=exchange,
+                exchange=exchange.value,
+                routing_key=exchange.value,
                 body=message,
                 properties=pika.BasicProperties(delivery_mode=2)  # make persistent
             )
         except pika.exceptions.AMQPError as e:
             raise RuntimeError(f"Failed to produce message: {e}")
 
-    def consume(self, queue: str, latest: bool = False, decode: bool = True) -> Tuple[Optional[int], Optional[str]]:
+    def consume(self, queue: RabbitQueue, latest: bool = False, decode: bool = True) -> Tuple[
+        Optional[int], Optional[str]
+    ]:
         """Fetch one message from a queue. Returns (delivery_tag, body) or (None, None)."""
         self._ensure_open()
 
         try:
             method_frame, header_frame, body = self.channel.basic_get(
-                queue=(f"{queue}-head" if latest else queue), auto_ack=False
+                queue=(f"{queue.value}-head" if latest else queue.value), auto_ack=False
             )
             if method_frame:
                 if decode:
@@ -145,11 +159,11 @@ class RabbitMQClient:
         except pika.exceptions.AMQPError as e:
             raise RuntimeError(f"Failed to reject message: {e}")
 
-    def get_queue_size(self, queue: str) -> int:
+    def get_queue_size(self, queue: RabbitQueue) -> int:
         """Get the size of a queue."""
         self._ensure_open()
         try:
-            queue_size = self.channel.queue_declare(queue=queue, passive=True).method.message_count
+            queue_size = self.channel.queue_declare(queue=queue.value, passive=True).method.message_count
             return queue_size
         except pika.exceptions.AMQPError as e:
             raise RuntimeError(f"Failed to reject message: {e}")

@@ -2,17 +2,22 @@ import os
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-SLACK_TOKEN = os.getenv("SLACK_TOKEN")       # Bot token (xoxb-...)
-SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#forest-dump")   # Channel ID or name, e.g., "#alerts"
+from logger_setup import setup_logger
+
+logger = setup_logger(__name__)
+
+SLACK_TOKEN = os.getenv("SLACK_TOKEN")  # Bot token
+SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#forest-dump")  # Channel ID or name, e.g., "#alerts"
 
 slack_client = WebClient(token=SLACK_TOKEN)
+
 
 def slack_notify(message: str, status: str = "info"):
     """
     Send a message to Slack.
 
     :param message: Message text
-    :param status: "info", "success", "failed" for emoji prefix
+    :param status: "info", "success", "failed" for the emoji prefix
     """
     emoji = {
         "info": ":information_source:",
@@ -30,6 +35,6 @@ def slack_notify(message: str, status: str = "info"):
 
     try:
         slack_client.chat_postMessage(channel=SLACK_CHANNEL, text=text)
-        print(f"Slack notification sent: {text}")
+        logger.debug(f"Slack notification sent: {text}")
     except SlackApiError as e:
-        print(f"Error sending Slack message: {e.response['error']}")
+        logger.error(f"Error sending Slack message: {e.response['error']}")

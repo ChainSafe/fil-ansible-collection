@@ -1,4 +1,4 @@
-aws:
+r2:
   endpoint_url: "https://2238a825c5aca59233eab1f221f7aefb.r2.cloudflarestorage.com"
   access_key_id: ""
   secret_access_key: ""
@@ -22,6 +22,7 @@ forest:
     tag: latest-fat
   node_type: "archive"
   snapshots_format: v1
+  log_level: "info" # debug, info, warning, error, critical
   host:
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
     data_path: "/data/forest"

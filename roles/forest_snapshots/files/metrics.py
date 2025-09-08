@@ -1,9 +1,11 @@
+from logger_setup import setup_logger
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
-class Metrics:
-    def __init__(self, logger, prefix="snapshot_", port=8000):
-        self.logger = logger
+logger = setup_logger(__name__)
 
+
+class Metrics:
+    def __init__(self, prefix="snapshot_", port=8000):
         # Counters
         self.success_counter = Counter(f"{prefix}_success_total", "Total successfully processed snapshots")
         self.failure_counter = Counter(f"{prefix}_failure_total", "Total failed processed snapshots")
@@ -43,16 +45,15 @@ class Metrics:
         self.failure_counter.inc()
         self.update_progress()
 
-
     # Context managers for duration tracking
     def track_download(self):
-        self.logger.debug("Starting download duration tracking")
+        logger.debug("Starting download duration tracking")
         return self.download_duration.time()
 
     def track_upload(self):
-        self.logger.debug("Starting upload duration tracking")
+        logger.debug("Starting upload duration tracking")
         return self.upload_duration.time()
 
     def track_processing(self):
-        self.logger.debug("Starting processing duration tracking")
+        logger.debug("Starting processing duration tracking")
         return self.processing_duration.time()

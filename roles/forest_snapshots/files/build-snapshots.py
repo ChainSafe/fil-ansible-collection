@@ -255,4 +255,4 @@ if __name__ == "__main__":
         else:
             build_historic_snapshots()
     except Exception as exc:
-        logger.error(f"Error running build-snapshots: {exc}")
+        logger.exception(f"Error running build-snapshots: {exc}")

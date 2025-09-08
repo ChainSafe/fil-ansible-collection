@@ -29,16 +29,3 @@
   notify: "{{ item.notify | default(omit) }}"
   loop_control:
     label: "{{ item.src }}"
-
-# - name: Template jobs
-#  ansible.builtin.template:
-#    src: "jobs/{{ item.src }}.j2"
-#    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
-#    owner: "{{ ansible_user }}"
-#    mode: "0755"
-#  loop:
-#    - { src: "download-snapshots.sh", notify: "Restart download-snapshots" }
-#    - { src: "validate-snapshots.sh", notify: "Restart validate-snapshots" }
-#  notify: "{{ item.notify | default(omit) }}"
-#  loop_control:
-#    label: "{{ item.src }}"

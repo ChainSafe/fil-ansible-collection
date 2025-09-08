@@ -36,7 +36,7 @@ FULLNODE_API_INFO = f"{forest_token}:/ip4/{forest_ip}/tcp/2345/http"
 
 def compute_state(epoch: int):
     """Compute state for a given epoch."""
-    logger.info(f"Computing state for epoch {epoch}")
+    logger.info(f"Computing state for epochs {epoch} - {epoch + COMPUTE_BATCH_SIZE}")
     try:
         with metrics.track_processing():
             proc = subprocess.Popen(
@@ -76,7 +76,9 @@ def compute_state(epoch: int):
                         if return_code != 0:
                             metrics.inc_failure()
                             slack_notify(f"Epochs {epoch} compute failed", "failed")
-                            time.sleep(60)
+                            # FIXME
+                            logger.error(f"Epochs {epoch} compute failed. Sleeping for 10 minutes...")
+                            time.sleep(600)
                             raise Exception("Epochs compute failed")
             else:
                 logger.info(f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished")

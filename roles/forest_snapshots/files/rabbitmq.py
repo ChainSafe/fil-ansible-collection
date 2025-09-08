@@ -94,14 +94,16 @@ class RabbitMQClient:
             # Main queue
             self.channel.exchange_declare(exchange=queue_x, exchange_type="fanout", durable=True)
             self.channel.queue_declare(
-                queue=queue, durable=True,
+                queue=queue,
+                durable=True,
                 arguments={"x-dead-letter-exchange": f"{queue}.dlx"}
             )
             self.channel.queue_bind(exchange=queue, queue=queue)
 
             # Latest status queue
             self.channel.queue_declare(
-                queue=queue_head, durable=True,
+                queue=queue_head,
+                durable=True,
                 arguments={'x-max-length': 1, "x-overflow": "drop-head"}
             )
             self.channel.queue_bind(exchange=queue_x, queue=queue_head)

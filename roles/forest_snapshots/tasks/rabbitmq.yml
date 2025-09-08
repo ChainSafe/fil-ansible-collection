@@ -3,5 +3,5 @@
   ansible.builtin.file:
     path: "{{ rabbitmq.data_path }}"
     state: directory
-    owner: '999' # rabbitmq user
+    owner: "{{ ansible_user }}"
     mode: '0755'

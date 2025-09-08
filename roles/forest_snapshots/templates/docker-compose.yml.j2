@@ -91,8 +91,8 @@ services:
       - forest
     deploy:
       replicas: {{ 1 if forest.validate_snapshots.enabled else 0 }}
-    entrypoint: /bin/bash
-    command: [ "/scripts/validate_snapshots.sh" ]
+    entrypoint: python3
+    command: [ "/scripts/validate_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
       FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}

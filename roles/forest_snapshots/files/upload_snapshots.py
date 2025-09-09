@@ -30,7 +30,6 @@ S3_CONNECT_TIMEOUT = 60
 metrics = None
 
 # Initialize S3
-s3 = None
 s3 = boto3.client(
     "s3",
     endpoint_url=os.getenv("R2_ENDPOINT_URL"),

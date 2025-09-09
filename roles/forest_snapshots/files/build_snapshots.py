@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp
+from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp, secs_to_dhms
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
@@ -49,19 +49,6 @@ rabbit_setup.setup([
 rabbit_setup.close()
 
 metrics = Metrics(prefix="forest_build_snapshot_", port=METRICS_PORT)
-
-
-def secs_to_dhms(seconds):
-    """Convert seconds to human-readable dhms."""
-    d, rem = divmod(seconds, 86400)
-    h, rem = divmod(rem, 3600)
-    m, s = divmod(rem, 60)
-    result = f"{m}m {s}s"
-    if h > 0:
-        result = f"{h}h {result}"
-    if d > 0:
-        result = f"{d}d {result}"
-    return result
 
 
 def epoch_to_date(epoch: int):
@@ -184,6 +171,50 @@ def build_snapshot(
         return None, False
 
 
+def wait_for_epoch_compute(epoch):
+    """Wait until the given epoch is computed in the queue."""
+    while True:
+        with RabbitMQClient() as rabbit:
+            latest_tag, latest_epoch = rabbit.consume(RabbitQueue.COMPUTE, latest=True)
+            if latest_tag and int(latest_epoch) > epoch:
+                logger.info(f"Epoch {epoch} is computed. Continuing...")
+                return
+        logger.warning(f"Epoch {epoch} is not computed. Waiting {QUEUE_WAIT_TIMEOUT // 60} minutes...")
+        time.sleep(QUEUE_WAIT_TIMEOUT)
+
+
+def process_historic_epoch(epoch: int):
+    """Build full, lite, and diff snapshots for a given epoch."""
+    logger.info(f"Processing epochs {epoch - LITE_DEPTH} to {epoch} on {CHAIN}")
+
+    # Full snapshot
+    with RabbitMQClient() as rabbit:
+        full_snapshot, success = build_snapshot(epoch, FULL_SNAPSHOTS_DIR, LITE_DEPTH, rabbit)
+        if not success:
+            logger.warning(f"Full snapshot for epoch {epoch} failed. Retrying...")
+            return False
+
+    # Lite snapshot
+    with RabbitMQClient() as rabbit:
+        _, success = build_snapshot(epoch, LITE_SNAPSHOT_DIR, STATE_ROOTS, rabbit, full_snapshot=full_snapshot)
+        if not success:
+            logger.warning(f"Lite snapshot for epoch {epoch} failed. Retrying...")
+            return False
+
+    # Diff snapshots
+    with RabbitMQClient() as rabbit:
+        for diff_epoch in range(epoch - LITE_DEPTH, epoch, DIFF_DEPTH):
+            _, success = build_snapshot(
+                diff_epoch, DIFF_SNAPSHOT_DIR, DIFF_DEPTH, rabbit,
+                full_snapshot=full_snapshot, diff=True
+            )
+            if not success:
+                logger.warning(f"Diff snapshot for epoch {diff_epoch} failed. Retrying...")
+                return False
+    logger.info(f"Epoch {epoch} built successfully.")
+    return True
+
+
 def build_historic_snapshots():
     """Build historic snapshots for each epoch in the past."""
     historic_start_epoch = 0
@@ -206,31 +237,12 @@ def build_historic_snapshots():
             historic_start_epoch = DEFAULT_START_EPOCH
 
     historic_start_epoch = (historic_start_epoch // LITE_DEPTH) * LITE_DEPTH
-
-    for epoch in range(historic_start_epoch + LITE_DEPTH, current_epoch, LITE_DEPTH):
-        while True:
-            rabbit = RabbitMQClient()
-            latest_computed_tag, latest_computed_epoch = rabbit.consume(RabbitQueue.COMPUTE, latest=True)
-            if latest_computed_tag:
-                latest_computed_epoch = int(latest_computed_epoch)
-                if latest_computed_epoch > epoch:
-                    logger.info(f"Epoch {epoch} is computed. Continuing...")
-                    rabbit.close()
-                    break
-            rabbit.close()
-            logger.warning(f"Epoch {epoch} is not computed. Waiting {QUEUE_WAIT_TIMEOUT // 60} minutes...")
-            time.sleep(QUEUE_WAIT_TIMEOUT)
-        with RabbitMQClient() as rabbit:
-            logger.info(f"Processing epochs {epoch - LITE_DEPTH} to {epoch} on {CHAIN}")
-            # Full Snapshot
-            full_snapshot, success = build_snapshot(epoch, FULL_SNAPSHOTS_DIR, LITE_DEPTH, rabbit)
-            if success:
-                # Lite Snapshot
-                build_snapshot(epoch, LITE_SNAPSHOT_DIR, STATE_ROOTS, rabbit, full_snapshot=full_snapshot)
-                # Diff Snapshots
-                for diff_epoch in range(epoch - LITE_DEPTH, epoch, DIFF_DEPTH):
-                    build_snapshot(diff_epoch, DIFF_SNAPSHOT_DIR, DIFF_DEPTH, rabbit, full_snapshot=full_snapshot,
-                                   diff=True)
+    while True:
+        for epoch in range(historic_start_epoch + LITE_DEPTH, current_epoch, LITE_DEPTH):
+            wait_for_epoch_compute(epoch)
+            while not process_historic_epoch(epoch):
+                logger.warning(f"Epoch {epoch} failed. Restarting...")
+                break
 
 
 def build_latest_snapshots():

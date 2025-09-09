@@ -40,6 +40,9 @@ class Metrics:
         if total > 0:
             self.progress.set(processed / total)
 
+    def get_progress(self):
+        return self.progress._value.get()
+
     def inc_success(self):
         self.success_counter.inc()
         self.update_progress()

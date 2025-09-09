@@ -15,6 +15,19 @@ def get_api_info() -> str:
     return f"{forest_token}:/ip4/{forest_ip}/tcp/2345/http"
 
 
+def secs_to_dhms(seconds):
+    """Convert seconds to human-readable dhms."""
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    result = f"{m}m {s}s"
+    if h > 0:
+        result = f"{h}h {result}"
+    if d > 0:
+        result = f"{d}d {result}"
+    return result
+
+
 def get_genesis_timestamp() -> int:
     """Fetch genesis timestamp."""
     try:

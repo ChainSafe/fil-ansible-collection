@@ -64,7 +64,7 @@ process_epochs() {
   local full_start_time=${SECONDS}
   while true; do
     last_downloaded_epoch=$(rabbit_consume_latest_with_default "downloaded" "{{ forest.download_snapshots.start_epoch }}")
-    last_built_epoch=$(rabbit_consume_latest_with_default "created" "{{ forest.build_snapshots.start_epoch }}")
+    last_built_epoch=$(rabbit_consume_latest_with_default "created" "{{ forest.build_snapshots_historic.start_epoch }}")
     if ((last_downloaded_epoch >= current)) || ((last_built_epoch >= current)) ; then
       local batch_start_time=${SECONDS}
       local batch_end=$((current + LITE_DEPTH))

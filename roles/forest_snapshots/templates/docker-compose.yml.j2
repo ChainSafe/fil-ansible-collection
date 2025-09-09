@@ -137,8 +137,8 @@ services:
     command: [ "/scripts/build_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
-      DEFAULT_START_EPOCH: {{ forest.build_snapshots.start_epoch }}
-      BUILD_DELAY: {{ forest.build_snapshots.delay }}
+      DEFAULT_START_EPOCH: {{ forest.build_snapshots_historic.start_epoch }}
+      BUILD_DELAY: {{ forest.build_snapshots_historic.delay }}
     logging: *default-logging
     restart: on-failure:5
     user: root

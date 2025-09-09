@@ -21,9 +21,9 @@ forest:
     name: ghcr.io/chainsafe/forest
     tag: latest-fat
   node_type: "archive"
-  snapshots_format: v1
   log_level: "info" # debug, info, warning, error
   rust_log_level: "warn" # debug, info, warn, error, off
+  f3_enabled_sidecar: false
   host:
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
     data_path: "/data/forest"
@@ -39,22 +39,18 @@ forest:
     enabled: false
     start_epoch: 0
     batch_size: 100
-  validate_snapshots:
-    enabled: false
-    start_epoch: 0
   build_snapshots_historic:
     enabled: false
     start_epoch: 0
     delay: "{{ 24 * 60 * 60 }}"
-    latest: false
   build_snapshots_latest:
     enabled: false
-    start_epoch: 0
+    format: "v1"
     delay: "{{ 6 * 60 * 60 }}"
-    latest: false
   upload_snapshots:
     enabled: false
-    start_epoch: 0
+  validate_snapshots:
+    enabled: false
   metrics:
     port: 6116
 

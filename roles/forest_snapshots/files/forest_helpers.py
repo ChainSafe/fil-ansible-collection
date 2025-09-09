@@ -2,6 +2,7 @@ import json
 import os
 import socket
 import subprocess
+import time
 
 from logger_setup import setup_logger
 
@@ -17,8 +18,8 @@ def get_api_info() -> str:
 
 def secs_to_dhms(seconds):
     """Convert seconds to human-readable dhms."""
-    d, rem = divmod(seconds, 86400)
-    h, rem = divmod(rem, 3600)
+    d, rem = divmod(seconds, 60*60*24)
+    h, rem = divmod(rem, 60*60)
     m, s = divmod(rem, 60)
     result = f"{m}m {s}s"
     if h > 0:
@@ -28,9 +29,49 @@ def secs_to_dhms(seconds):
     return result
 
 
+def wait_for_f3():
+    """Wait for f3 status to be ready."""
+    logger.debug("Waiting for f3 to be ready")
+    while True:
+        try:
+            result = subprocess.run(
+                ["/usr/local/bin/forest-cli", "f3", "ready", "--wait"],
+                env={
+                    "FULLNODE_API_INFO": get_api_info()
+                },
+                capture_output=True, text=True, check=True
+            )
+            if result.returncode == 0:
+                break
+        except subprocess.CalledProcessError as err:
+            logger.error(f"Error Getting f3 status, wait 10 sec: {err.stderr}", exc_info=True)
+            time.sleep(10)
+
+
+def wait_for_sync():
+    """Wait for sync to complete."""
+    logger.debug("Wait for instance sync")
+    while True:
+        try:
+            result = subprocess.run(
+                ["/usr/local/bin/forest-cli", "sync", "wait"],
+                env={
+                    "FULLNODE_API_INFO": get_api_info()
+                },
+                capture_output=True, text=True, check=True
+            )
+            if result.returncode == 0:
+                break
+        except subprocess.CalledProcessError as err:
+            logger.error(f"Error Getting sync status, wait 10 sec: {err.stderr}", exc_info=True)
+            time.sleep(10)
+
+
 def get_genesis_timestamp() -> int:
     """Fetch genesis timestamp."""
+    logger.debug("Fetch genesis timestamp")
     try:
+        wait_for_sync()
         result = subprocess.run(
             ["/usr/local/bin/forest-cli", "chain", "genesis"],
             env={
@@ -50,6 +91,7 @@ def get_genesis_timestamp() -> int:
 
 def get_current_epoch() -> int:
     """Fetch current chain head epoch."""
+    logger.debug("Fetch current epoch")
     try:
         result = subprocess.run(
             ["/usr/local/bin/forest-cli", "chain", "head", "--format", "json"],

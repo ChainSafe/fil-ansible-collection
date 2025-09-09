@@ -37,7 +37,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             proc = subprocess.Popen(
                 [
                     "/usr/local/bin/forest-cli", "state", "compute",
-                    "--epoch", str(epoch),
+                    "--epoch", str(epoch - 1),
                     "--n-epochs", str(COMPUTE_BATCH_SIZE)
                 ],
                 env={
@@ -72,11 +72,13 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
                         slack_notify(f"Epochs {epoch} compute failed", "failed")
                         raise Exception("Epochs compute failed")
         else:
-            time_taken = time.time() - start
-            time_estimate = secs_to_dhms(int(time_taken / metrics.get_progress()))
-            logger.info(
-                f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\nTook time: {secs_to_dhms(time_taken)}.\nTime left: {time_estimate}")
             metrics.inc_success()
+            time_taken = time.time() - start
+            progress = metrics.get_progress()
+            if progress > 0:
+                time_estimate = secs_to_dhms(int(time_taken / metrics.get_progress()))
+                logger.info(
+                    f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\nTook time: {secs_to_dhms(time_taken)}.\nTime left: {time_estimate}")
             rabbit.produce(RabbitQueue.COMPUTE, str(epoch + COMPUTE_BATCH_SIZE))
     except Exception as e:
         metrics.inc_failure()

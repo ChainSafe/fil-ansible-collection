@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp, secs_to_dhms
+from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp, secs_to_dhms, wait_for_f3
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
@@ -85,6 +85,42 @@ def _resolve_snapshot_path(folder: str, epoch: int) -> Optional[str]:
     return None
 
 
+def get_build_args(
+    snapshot_type: str,
+    full_snapshot: str,
+    depth: int,
+    epoch: int,
+    diff: bool,
+    snapshot: str
+) -> str:
+    """Get build args."""
+    args = []
+    if snapshot_type == "latest-v2":
+        wait_for_f3()
+
+    if full_snapshot:
+        args.extend([
+            "/usr/local/bin/forest-tool", "archive", "export",
+            "--epoch", str(epoch),
+            "--output-path", snapshot
+        ])
+        args.append(full_snapshot)
+    else:
+        args.extend([
+            "/usr/local/bin/forest-cli", "snapshot", "export",
+            "--tipset", str(epoch),
+            "--depth", str(depth),
+            "--format", SNAPSHOT_FORMAT,
+            "--output-path", snapshot
+        ])
+        if diff:
+            args.extend([
+                "--diff", str(epoch - depth),
+                "--diff-depth", str(STATE_ROOTS),
+            ])
+    return ' '.join(args)
+
+
 def build_snapshot(
     epoch: int,
     folder: str,
@@ -107,28 +143,9 @@ def build_snapshot(
     try:
         # Export snapshot via forest-cli
         with metrics.track_processing():
-            args = []
-            if full_snapshot:
-                args.extend([
-                    "/usr/local/bin/forest-tool", "archive", "export",
-                    "--epoch", str(epoch),
-                    "--output-path", snapshot
-                ])
-                args.append(full_snapshot)
-            else:
-                args.extend([
-                    "/usr/local/bin/forest-cli", "snapshot", "export",
-                    "--tipset", str(epoch),
-                    "--depth", str(depth),
-                    "--format", SNAPSHOT_FORMAT,
-                    "--output-path", snapshot
-                ])
-                if diff:
-                    args.extend([
-                        "--diff", str(epoch - depth),
-                        "--diff-depth", str(STATE_ROOTS),
-                    ])
+            args = get_build_args(snapshot_type, full_snapshot, depth, epoch, diff, snapshot)
             os.makedirs(folder, exist_ok=True)
+            logger.debug(f"Running command: {args}")
             proc = subprocess.Popen(
                 args=args,
                 cwd=folder,
@@ -136,7 +153,7 @@ def build_snapshot(
                     "FULLNODE_API_INFO": get_api_info(),
                     "RUST_LOG": "info"
                 },
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True
             )
             for line in proc.stdout:
                 logger.debug(line.rstrip())

@@ -27,7 +27,7 @@ LITE_DEPTH = 30000
 DIFF_DEPTH = 3000
 LATEST_DEPTH = 2000
 STATE_ROOTS = 900
-QUEUE_WAIT_TIMEOUT = 30 * 60  # 30 minutes
+QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
 
 # Directories (adjust as needed)
 SNAPSHOT_PATH = os.getenv("SNAPSHOT_PATH", "/data/snapshots")

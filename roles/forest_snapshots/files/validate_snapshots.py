@@ -17,7 +17,7 @@ CHAIN = os.getenv("CHAIN", "testnet")
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
 
 # Config
-QUEUE_WAIT_TIMEOUT = 30 * 60  # 30 minutes
+QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
 TIMEOUT_SECONDS = 40 * 60  # 40 minutes
 metrics = None
 

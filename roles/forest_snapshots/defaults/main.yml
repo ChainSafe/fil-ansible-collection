@@ -42,7 +42,12 @@ forest:
   validate_snapshots:
     enabled: false
     start_epoch: 0
-  build_snapshots:
+  build_snapshots_historic:
+    enabled: false
+    start_epoch: 0
+    delay: "{{ 24 * 60 * 60 }}"
+    latest: false
+  build_snapshots_latest:
     enabled: false
     start_epoch: 0
     delay: "{{ 6 * 60 * 60 }}"

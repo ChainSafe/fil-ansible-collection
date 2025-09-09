@@ -94,16 +94,45 @@ services:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "metrics:{{ forest.container.metrics_path }}"
 
-  build-snapshots:
+  build-snapshots-latest:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: build-snapshots-{{ network }}
-    hostname: build-snapshots
+    container_name: build-snapshots-latest-{{ network }}
+    hostname: build-snapshots-latest
+    depends_on:
+      - rabbitmq
+      - forest
+    deploy:
+      replicas: {{ 1 if forest.build_snapshots_latest.enabled else 0 }}
+    entrypoint: python3
+    command: [ "/scripts/build_snapshots.py" ]
+    env_file: [ ".env" ]
+    environment:
+      BUILD_LATEST_SNAPSHOTS: "true"
+      BUILD_DELAY: {{ forest.build_snapshots_latest.delay }}
+    logging: *default-logging
+    restart: on-failure:5
+    user: root
+    labels:
+      project: "fil-archive-snapshots"
+      env: "prod"
+      container_role: "build-snapshots-latest"
+      instance: "{{ inventory_hostname }}"
+    volumes:
+      - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
+      - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
+      - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "metrics:{{ forest.container.metrics_path }}"
+
+  build-snapshots-historic:
+    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    container_name: build-snapshots-historic-{{ network }}
+    hostname: build-snapshots-historic
     depends_on:
       - rabbitmq
       - forest
       - compute-state
     deploy:
-      replicas: {{ 1 if forest.build_snapshots.enabled else 0 }}
+      replicas: {{ 1 if forest.build_snapshots_historic.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/build_snapshots.py" ]
     env_file: [ ".env" ]
@@ -116,38 +145,7 @@ services:
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
-      container_role: "build-snapshots"
-      instance: "{{ inventory_hostname }}"
-    volumes:
-      - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
-      - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
-      - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
-      - "metrics:{{ forest.container.metrics_path }}"
-
-  build-snapshots-historic:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: build-snapshots-latest-{{ network }}
-    hostname: build-snapshots-latest
-    depends_on:
-      - rabbitmq
-      - forest
-      - compute-state
-    deploy:
-      replicas: {{ 1 if forest.build_snapshots_latest.enabled else 0 }}
-    entrypoint: python3
-    command: [ "/scripts/build_snapshots.py" ]
-    env_file: [ ".env" ]
-    environment:
-      BUILD_SNAPSHOT_LATEST: "0"
-      DEFAULT_START_EPOCH: {{ forest.build_snapshots.start_epoch }}
-      BUILD_DELAY: {{ 24 * 60 * 60 }}
-    logging: *default-logging
-    restart: on-failure:5
-    user: root
-    labels:
-      project: "fil-archive-snapshots"
-      env: "prod"
-      container_role: "build-snapshots"
+      container_role: "build-snapshots-historic"
       instance: "{{ inventory_hostname }}"
     volumes:
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
@@ -162,7 +160,8 @@ services:
     depends_on:
       - rabbitmq
       - forest
-      - build-snapshots
+      - build-snapshots-historic
+      - build-snapshots-latest
     deploy:
       replicas: {{ 1 if forest.upload_snapshots.enabled else 0 }}
     entrypoint: python3

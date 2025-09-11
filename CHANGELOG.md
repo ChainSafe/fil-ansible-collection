@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/ChainSafe/fil-ansible-collection/compare/0.5.0...0.5.1) (2025-09-11)
+
+
+### Bug Fixes
+
+* **forest_snapshot:** Adjust snapshot logic and improve template handling for consistency in forest_snapshots ([eba5b16](https://github.com/ChainSafe/fil-ansible-collection/commit/eba5b16293c8372836feab677c984668e7054b67))
+* update documentation ([f19b474](https://github.com/ChainSafe/fil-ansible-collection/commit/f19b4743c039aa4b96cc7fc559d7c00deeb6952f))
+
 ## [0.5.0](https://github.com/ChainSafe/fil-ansible-collection/compare/0.4.0...0.5.0) (2025-09-09)
 
 

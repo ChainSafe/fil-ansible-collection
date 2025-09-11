@@ -13,7 +13,7 @@ if [[ "{{ forest.import_libp2p_private_key | lower }}" = "true" ]]; then
 fi
 
 forest \
-  {{ forest.container_extra_args | trim | join(' ') }} \
+  {{ forest.container_extra_args | join(' ') }} \
   --chain "{{ network }}" \
   --auto-download-snapshot  \
   --save-token {{ forest.container.data_path }}/token \

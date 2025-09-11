@@ -99,13 +99,12 @@ def get_build_args(
     if snapshot_type == "latest-v2":
         wait_for_f3()
 
-    if full_snapshot:
+    if not full_snapshot:
         args.extend([
             "/usr/local/bin/forest-tool", "archive", "export",
             "--epoch", str(epoch),
             "--output-path", snapshot
         ])
-        args.append(full_snapshot)
     else:
         args.extend([
             "/usr/local/bin/forest-cli", "snapshot", "export",
@@ -119,6 +118,7 @@ def get_build_args(
                 "--diff", str(epoch - depth),
                 "--diff-depth", str(STATE_ROOTS),
             ])
+        args.append(full_snapshot)
     return ' '.join(args)
 
 

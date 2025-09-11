@@ -30,172 +30,154 @@ Ensure Docker is installed (e.g., via `chainsafe.filecoin.install_packages`).
 Defined in `defaults/main.yml` (excerpt):
 
 ```yaml
+# R2 / Object Storage
 r2:
+  # S3-compatible endpoint for Cloudflare R2 or other object storage.
   endpoint_url: "https://2238a825c5aca59233eab1f221f7aefb.r2.cloudflarestorage.com"
+  # Access key ID used for uploads.
   access_key_id: ""
+  # Secret key used for uploads.
   secret_access_key: ""
+  # Bucket name where snapshots are stored.
   bucket_name: "forest-archive"
 
+# External Disk / Filesystem
 external_disk:
-  raid_devices: ""
+  # List or device glob for RAID members (if any). Leave empty for single disk.
+  raid_devices: []
+  # RAID device name when `raid_devices` is used.
   raid_device_name: md0
+  # RAID level (e.g., 0/1/5). Only used when `raid_devices` is set
   raid_level: 0
+  # Mount point for the data disk that will hold archive and snapshots.
   mount_point: /data
+  # Filesystem type used when formatting the disk or array.
   filesystem_type: ext4
 
+# Docker Compose
 docker_compose:
+  # Path where Compose files and state are placed.
   project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ network }}"
 
+# Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
 network: "testnet"
 
+# Forest configuration
 forest:
   image:
+    # Container image repository for Forest.
     name: ghcr.io/chainsafe/forest
+    # Container image tag.
     tag: latest-fat
+  # Node type descriptor used in naming; archive nodes keep full chain state.
   node_type: "archive"
-  log_level: "info"        # debug, info, warning, error
-  rust_log_level: "warn"   # debug, info, warn, error, off
+  # Application log verbosity (debug, info, warning, error).
+  log_level: "info" # debug, info, warning, error
+  # Rust log filter passed to the process (debug, info, warn, error, off).
+  rust_log_level: "warn" # debug, info, warn, error, off
+  # Enables F3 sidecar FFI if required.
   f3_enabled_sidecar: false
+  # Target number of peers to connect to.
   target_peer_count: 5000
+  # Extra CLI args for the Forest process; `--no-gc` recommended for snapshotters.
   container_extra_args:
     - "--no-gc"
   host:
+    # Forest config directory on host.
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
+    # Forest data directory on host.
     data_path: "/data/forest"
+    # Snapshot output directory on host.
     snapshot_path: "/data/snapshots/{{ network }}"
+    # Helper scripts directory on host.
     scripts_path: "/home/{{ ansible_user }}/forest/{{ network }}/scripts"
   container:
+    # Config directory inside container.
     config_path: "/home/forest/config"
+    # Data directory inside container.
     data_path: "/home/forest/data"
+    # Scripts directory inside container.
     scripts_path: "/scripts"
+    # Snapshot output path inside container.
     snapshot_path: "/home/forest/snapshots"
+    # Metrics/logs path inside container.
     metrics_path: "/data/metrics"
   compute:
+    # Enable compute-state job service.
     enabled: false
+    # Starting epoch for compute-state.
     start_epoch: 0
+    # Batch size for compute-state processing.
     batch_size: 100
   build_snapshots_historic:
+    # Enable historic snapshots builder.
     enabled: false
+    # Starting epoch for historic snapshot generation.
     start_epoch: 0
+    # Delay between historic snapshot runs in seconds.
     delay: "{{ 24 * 60 * 60 }}"
   build_snapshots_latest:
+    # Enable periodic latest snapshot builder.
     enabled: false
+    # Snapshot format/version for latest snapshots.
     format: "v1"
+    # Delay between latest snapshot runs in seconds.
     delay: "{{ 6 * 60 * 60 }}"
   upload_snapshots:
+    # Enable uploader service to push snapshots to object storage.
     enabled: false
   validate_snapshots:
+    # Enable validator service to verify produced snapshots.
     enabled: false
   metrics:
+    # Metrics port exposed by Forest.
     port: 6116
+  # Whether to import a provided libp2p private key.
   import_libp2p_private_key: false
+  # The libp2p private key material (handle securely).
   libp2p_private_key: ""
 
+# RabbitMQ
 rabbitmq:
+  # Whether to deploy RabbitMQ alongside the pipeline.
   enabled: true
+  #  RabbitMQ username.
   user: "guest"
+  # RabbitMQ password.
   password: "password"
+  # Host path for RabbitMQ data.
   data_path: "/data/rabbitmq/{{ network }}"
 
+# # Grafana Alloy (Metrics/Logs Shipping)
 grafana_alloy:
+  # Whether to deploy Grafana Alloy sidecar.
   enabled: true
+  # Host path for Alloy configs.
   config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ network }}"
+  # Grafana Alloy container image.
   image: "grafana/alloy:latest"
+  # Grafana Cloud API key used for remote_write.
   api_key: "GRAFANA_CLOUD_API_KEY"
   metrics:
+    # Grafana Cloud Prometheus endpoint.
     endpoint: "https://prometheus-prod-xx.grafana.net"
+    # Prometheus instance/user ID.
     username: "GRAFANA_CLOUD_METRICS_USERNAME"
   logs:
+    # Grafana Cloud Logs endpoint.
     endpoint: "https://logs-prod-xx.grafana.net"
+    # Logs instance/user ID.
     username: "GRAFANA_CLOUD_LOGS_USERNAME"
 
+# Slack Notifications
 slack:
+  # Bot token used to post notifications.
   token: "SLACK_TOKEN"
+  # Default channel for notifications.
   channel: "#forest-dump"
 ```
 
 Sensitive variables (R2 keys, Grafana credentials, Slack token) should be set via Ansible Vault or environment.
-
-### Variables reference
-Below is a complete reference of all variables defined in `defaults/main.yml`.
-
-#### R2 / Object Storage
-- `r2.endpoint_url` (string, default: `https://2238a825c5aca59233eab1f221f7aefb.r2.cloudflarestorage.com`): S3-compatible endpoint for Cloudflare R2 or other object storage.
-- `r2.access_key_id` (string, default: empty): Access key ID used for uploads.
-- `r2.secret_access_key` (string, default: empty): Secret key used for uploads.
-- `r2.bucket_name` (string, default: `forest-archive`): Bucket name where snapshots are stored.
-
-#### External Disk / Filesystem
-- `external_disk.raid_devices` (string, default: empty): Space-separated list or device glob for RAID members (if any). Leave empty for single disk.
-- `external_disk.raid_device_name` (string, default: `md0`): mdadm RAID device name when `raid_devices` is used.
-- `external_disk.raid_level` (integer, default: `0`): RAID level (e.g., 0/1/5). Only used when `raid_devices` is set.
-- `external_disk.mount_point` (string, default: `/data`): Mount point for the data disk that will hold archive and snapshots.
-- `external_disk.filesystem_type` (string, default: `ext4`): Filesystem type used when formatting the disk or array.
-
-#### Docker Compose
-- `docker_compose.project_path` (string, default: `/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ network }}`): Path where Compose files and state are placed.
-
-#### Network
-- `network` (string, default: `testnet`): Filecoin network identifier (e.g., `mainnet`, `calibration`). Used in names and configs.
-
-#### Forest Node
-- `forest.image.name` (string, default: `ghcr.io/chainsafe/forest`): Container image repository for Forest.
-- `forest.image.tag` (string, default: `latest-fat`): Container image tag.
-- `forest.node_type` (string, default: `archive`): Node type descriptor used in naming; archive nodes keep full chain state.
-- `forest.log_level` (string, default: `info`): Application log verbosity (debug, info, warning, error).
-- `forest.rust_log_level` (string, default: `warn`): Rust log filter passed to the process (debug, info, warn, error, off).
-- `forest.f3_enabled_sidecar` (boolean, default: `false`): Enables F3 sidecar FFI if required.
-- `forest.target_peer_count` (integer, default: `5000`): Target number of peers to connect to.
-- `forest.container_extra_args` (list[string], default: `["--no-gc"]`): Extra CLI args for the Forest process; `--no-gc` recommended for snapshotters.
-
-Paths on the host:
-- `forest.host.config_path` (string, default: `/home/{{ ansible_user }}/forest/{{ network }}/config`): Forest config directory on host.
-- `forest.host.data_path` (string, default: `/data/forest`): Forest data directory on host.
-- `forest.host.snapshot_path` (string, default: `/data/snapshots/{{ network }}`): Snapshot output directory on host.
-- `forest.host.scripts_path` (string, default: `/home/{{ ansible_user }}/forest/{{ network }}/scripts`): Helper scripts directory on host.
-
-Paths in the container:
-- `forest.container.config_path` (string, default: `/home/forest/config`): Config directory inside container.
-- `forest.container.data_path` (string, default: `/home/forest/data`): Data directory inside container.
-- `forest.container.scripts_path` (string, default: `/scripts`): Scripts directory inside container.
-- `forest.container.snapshot_path` (string, default: `/home/forest/snapshots`): Snapshot output path inside container.
-- `forest.container.metrics_path` (string, default: `/data/metrics`): Metrics/logs path inside container.
-
-Jobs toggles and parameters:
-- `forest.compute.enabled` (boolean, default: `false`): Enable compute-state job service.
-- `forest.compute.start_epoch` (integer, default: `0`): Starting epoch for compute-state.
-- `forest.compute.batch_size` (integer, default: `100`): Batch size for compute-state processing.
-- `forest.build_snapshots_historic.enabled` (boolean, default: `false`): Enable historic snapshots builder.
-- `forest.build_snapshots_historic.start_epoch` (integer, default: `0`): Starting epoch for historic snapshot generation.
-- `forest.build_snapshots_historic.delay` (Jinja/integer, default: `{{ 24 * 60 * 60 }}`): Delay between historic snapshot runs in seconds.
-- `forest.build_snapshots_latest.enabled` (boolean, default: `false`): Enable periodic latest snapshot builder.
-- `forest.build_snapshots_latest.format` (string, default: `v1`): Snapshot format/version for latest snapshots.
-- `forest.build_snapshots_latest.delay` (Jinja/integer, default: `{{ 6 * 60 * 60 }}`): Delay between latest snapshot runs in seconds.
-- `forest.upload_snapshots.enabled` (boolean, default: `false`): Enable uploader service to push snapshots to object storage.
-- `forest.validate_snapshots.enabled` (boolean, default: `false`): Enable validator service to verify produced snapshots.
-- `forest.metrics.port` (integer, default: `6116`): Metrics port exposed by Forest.
-- `forest.import_libp2p_private_key` (boolean, default: `false`): Whether to import a provided libp2p private key.
-- `forest.libp2p_private_key` (string, default: empty): The libp2p private key material (handle securely).
-
-#### RabbitMQ
-- `rabbitmq.enabled` (boolean, default: `true`): Whether to deploy RabbitMQ alongside the pipeline.
-- `rabbitmq.user` (string, default: `guest`): RabbitMQ username.
-- `rabbitmq.password` (string, default: `password`): RabbitMQ password.
-- `rabbitmq.data_path` (string, default: `/data/rabbitmq/{{ network }}`): Host path for RabbitMQ data.
-
-#### Grafana Alloy (Metrics/Logs Shipping)
-- `grafana_alloy.enabled` (boolean, default: `true`): Whether to deploy Grafana Alloy sidecar.
-- `grafana_alloy.config_path` (string, default: `/home/{{ ansible_user }}/grafana-alloy/{{ network }}`): Host path for Alloy configs.
-- `grafana_alloy.image` (string, default: `grafana/alloy:latest`): Alloy container image.
-- `grafana_alloy.api_key` (string, default: `GRAFANA_CLOUD_API_KEY`): Grafana Cloud API key used for remote_write.
-- `grafana_alloy.metrics.endpoint` (string, default: `https://prometheus-prod-xx.grafana.net`): Grafana Cloud Prometheus endpoint.
-- `grafana_alloy.metrics.username` (string, default: `GRAFANA_CLOUD_METRICS_USERNAME`): Prometheus instance/user ID.
-- `grafana_alloy.logs.endpoint` (string, default: `https://logs-prod-xx.grafana.net`): Grafana Cloud Logs endpoint.
-- `grafana_alloy.logs.username` (string, default: `GRAFANA_CLOUD_LOGS_USERNAME`): Logs instance/user ID.
-
-#### Slack Notifications
-- `slack.token` (string, default: `SLACK_TOKEN`): Bot token used to post notifications.
-- `slack.channel` (string, default: `#forest-dump`): Default channel for notifications.
 
 ### Templates, Files and Compose
 - Compose and env templates: `templates/docker-compose.yml.j2`, `templates/env.j2`

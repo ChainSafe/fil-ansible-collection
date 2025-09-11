@@ -8,7 +8,7 @@ namespace: chainsafe
 name: filecoin
 
 # The version of the collection. Must be compatible with semantic versioning
-version: 1.0.0
+version: 0.5.0
 
 # The path to the Markdown (.md) readme file. This path is relative to the root of the collection
 readme: README.md
@@ -20,7 +20,7 @@ authors:
   - "Samuel https://github.com/samuelarogbonlo"
   - "Hamid (https://github.com/hamidmuslih)"
   - "Faith Olapade (https://github.com/Faithtosin)"
-  - "Alexander Dobrodey <alexander.dobrodey@chainsafe.io> (https://github.com/ADobrodey)"
+  - "Alexander Dobrodey (https://github.com/ADobrodey)"
 
 ### OPTIONAL but strongly recommended
 # A short summary description of the collection

@@ -2,8 +2,8 @@
 #Controls whether the keystore is encrypted
 encrypt_keystore = false
 data_dir = "{{ forest.container.data_path }}"
-enable_rpc = {{ forest.rpc.enabled }}
-enable_metrics_endpoint = {{ forest.metrics.enabled }}
+enable_rpc = {{ forest.rpc.enabled | lower }}
+enable_metrics_endpoint = {{ forest.metrics.enabled | lower }}
 metrics_address = "127.0.0.1:{{ forest.metrics.port }}"
 rpc_address = "0.0.0.0:{{ forest.rpc.port }}"
 

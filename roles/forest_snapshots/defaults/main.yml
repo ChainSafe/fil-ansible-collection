@@ -24,6 +24,9 @@ forest:
   log_level: "info" # debug, info, warning, error
   rust_log_level: "warn" # debug, info, warn, error, off
   f3_enabled_sidecar: false
+  target_peer_count: 5000
+  container_extra_args:
+    - "--no-gc"
   host:
     config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
     data_path: "/data/forest"
@@ -53,6 +56,9 @@ forest:
     enabled: false
   metrics:
     port: 6116
+  import_libp2p_private_key: false
+  libp2p_private_key: ""
+
 
 rabbitmq:
   enabled: true

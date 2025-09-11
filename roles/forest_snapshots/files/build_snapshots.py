@@ -58,7 +58,7 @@ def epoch_to_date(epoch: int):
     ).strftime("%Y-%m-%d")
 
 
-def parse_epoch_from_snapshot_path(path: str) -> int:
+def parse_epoch_from_snapshot_path(path: str, default: int = 0) -> int:
     """
     Parse the epoch from a snapshot filename.
     The expected filename pattern includes 'height_<epoch>' before the extension.
@@ -67,7 +67,8 @@ def parse_epoch_from_snapshot_path(path: str) -> int:
     filename = os.path.basename(path)
     m = re.search(r"height_(\d+)", filename)
     if not m:
-        raise ValueError(f"Cannot parse epoch from filename: {filename}")
+        logger.error(f"Cannot parse epoch from filename: {filename}, revert to default start epoch {default}")
+        return default
     return int(m.group(1))
 
 
@@ -155,10 +156,10 @@ def build_snapshot(
                 },
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True
             )
-            for line in proc.stdout:
-                logger.debug(line.rstrip())
             return_code = proc.wait()
         if return_code != 0:
+            for line in proc.stdout:
+                logger.error(line.rstrip())
             logger.error(f"Snapshot {snapshot_type} {epoch} failed")
             metrics.inc_failure()
             slack_notify(f"Snapshot {snapshot_type} {epoch} failed", "failed")
@@ -234,31 +235,25 @@ def process_historic_epoch(epoch: int):
 
 def build_historic_snapshots():
     """Build historic snapshots for each epoch in the past."""
-    historic_start_epoch = 0
+    historic_epoch = DEFAULT_START_EPOCH
     current_epoch = get_current_epoch()
-    epochs_left = current_epoch - historic_start_epoch
-    # Diff snapshots, lite snapshots and full snapshots
-    metrics.set_total(epochs_left // DIFF_DEPTH + (epochs_left // LITE_DEPTH) * 2)
-    rabbit = RabbitMQClient()
-    delivery_tag, snapshot_path = rabbit.consume(RabbitQueue.SNAPSHOT, latest=True)
-    rabbit.close()
-    historic_start_epoch = DEFAULT_START_EPOCH
-    if not delivery_tag:
-        logger.warning("No processed snapshots in queue. Starting over...")
-    else:
-        try:
-            historic_start_epoch = parse_epoch_from_snapshot_path(snapshot_path)
-        except Exception as e:
-            logger.warning(
-                f"Failed to parse epoch from snapshot path '{snapshot_path}': {e}. Falling back to DEFAULT_START_EPOCH.")
-            historic_start_epoch = DEFAULT_START_EPOCH
-
-    historic_start_epoch = (historic_start_epoch // LITE_DEPTH) * LITE_DEPTH
     while True:
-        for epoch in range(historic_start_epoch + LITE_DEPTH, current_epoch, LITE_DEPTH):
+        with RabbitMQClient() as rabbit:
+            delivery_tag, snapshot_path = rabbit.consume(RabbitQueue.SNAPSHOT, latest=True)
+        if not delivery_tag:
+            logger.warning("No processed epochs in queue. Starting over...")
+        else:
+            historic_epoch = parse_epoch_from_snapshot_path(snapshot_path, DEFAULT_START_EPOCH)
+        epochs_left = current_epoch - historic_epoch
+        # Diff snapshots, lite snapshots and full snapshots
+        metrics.set_total(epochs_left // DIFF_DEPTH + (epochs_left // LITE_DEPTH) * 2)
+
+        historic_epoch = (historic_epoch // LITE_DEPTH) * LITE_DEPTH
+        for epoch in range(historic_epoch + LITE_DEPTH, current_epoch, LITE_DEPTH):
             wait_for_epoch_compute(epoch)
-            while not process_historic_epoch(epoch):
+            if not process_historic_epoch(epoch):
                 logger.warning(f"Epoch {epoch} failed. Restarting...")
+                time.sleep(QUEUE_WAIT_TIMEOUT)
                 break
 
 

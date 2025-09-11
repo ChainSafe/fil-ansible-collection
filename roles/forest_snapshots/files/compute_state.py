@@ -37,8 +37,8 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             proc = subprocess.Popen(
                 [
                     "/usr/local/bin/forest-cli", "state", "compute",
-                    "--epoch", str(epoch - 1),
-                    "--n-epochs", str(COMPUTE_BATCH_SIZE)
+                    "--epoch", str(epoch),
+                    "--n-epochs", str(COMPUTE_BATCH_SIZE+1)
                 ],
                 env={
                     "FULLNODE_API_INFO": get_api_info(),
@@ -53,11 +53,11 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             logger.error(
                 f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} failed, retrying with per/epoch computation...")
             with metrics.track_processing():
-                for epoch in range(epoch, epoch + COMPUTE_BATCH_SIZE):
+                for epoch_manual in range(epoch-COMPUTE_BATCH_SIZE, epoch + COMPUTE_BATCH_SIZE+1):
                     proc = subprocess.Popen(
                         [
                             "/usr/local/bin/forest-cli", "state", "compute",
-                            "--epoch", str(epoch),
+                            "--epoch", str(epoch_manual),
                         ],
                         env={
                             "FULLNODE_API_INFO": get_api_info()
@@ -65,11 +65,11 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
                     )
                     for line in proc.stdout:
-                        logger.debug(line.rstrip())
+                        logger.debug(f"{epoch_manual}: {line.rstrip()}")
                     return_code = proc.wait()
                     if return_code != 0:
                         metrics.inc_failure()
-                        slack_notify(f"Epochs {epoch} compute failed", "failed")
+                        slack_notify(f"Epochs {epoch_manual} compute failed", "failed")
                         raise Exception("Epochs compute failed")
         else:
             metrics.inc_success()

@@ -1,0 +1,4 @@
+---
+- name: Restart_forest_docker
+  ansible.builtin.command: docker restart "forest-{{ network }}-{{ forest.node_type }}"
+  changed_when: true

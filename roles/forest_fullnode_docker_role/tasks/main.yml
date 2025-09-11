@@ -1,0 +1,106 @@
+---
+- name: Create data dir
+  ansible.builtin.file:
+    path: "{{ forest.host.data_path }}"
+    state: directory
+    owner: "{{ forest.user }}"
+    group: "{{ forest.group }}"
+    mode: "0755"
+  check_mode: false
+
+- name: Create a scripts dir
+  ansible.builtin.file:
+    path: "{{ forest.host.scripts_path }}"
+    state: directory
+    owner: "{{ forest.user }}"
+    group: "{{ forest.group }}"
+    mode: "0755"
+  check_mode: false
+
+- name: Create a config dir
+  ansible.builtin.file:
+    path: "{{ forest.host.config_path }}"
+    state: directory
+    owner: "{{ forest.user }}"
+    group: "{{ forest.group }}"
+    mode: "0755"
+  check_mode: false
+
+- name: Forest filtering RPC file
+  ansible.builtin.template:
+    src: templates/filter-list.txt
+    dest: "{{ forest.host.config_path }}/filter-list.txt"
+    mode: "0755"
+  notify:
+    - Restart_forest_docker
+
+- name: Template forest full node config file
+  ansible.builtin.template:
+    src: templates/config.toml.j2
+    dest: "{{ forest.host.config_path }}/config.toml"
+    mode: "0755"
+  notify:
+    - Restart_forest_docker
+
+- name: Ensure NTP is installed
+  ansible.builtin.apt:
+    name:
+      - ntp
+    state: present
+  become: true
+
+- name: Ensure NTP is running
+  ansible.builtin.service:
+    name: ntp
+    state: started
+    enabled: true
+
+- name: Template Run forest-node script
+  ansible.builtin.template:
+    src: "forest.sh.j2"
+    dest: "{{ forest.host.scripts_path }}/forest.sh"
+    owner: "{{ forest.user }}"
+    group: "{{ forest.group }}"
+    mode: "0755"
+  notify: Restart_forest_docker
+
+- name: Start forest node container
+  community.docker.docker_container:
+    name: "forest-{{ network }}-{{ forest.node_type }}"
+    state: started
+    image: "{{ forest.image.name }}:{{ forest.image.tag }}"
+    pull: true
+    stop_timeout: 20
+    entrypoint: /bin/bash
+    # TODO add a genesis file if necessary --genesis="{{ forest_path }}/genesis.car"
+    # TODO garbage collector var --env "FOREST_GC_TRIGGER_FACTOR=1.4" (should be added at issue resolution https://github.com/ChainSafe/forest/issues/3863)
+    command: "{{ forest.container.scripts_path }}/forest.sh > {{ forest.container.scripts_path }}/forest.log.txt 2>&1"
+    env:
+      FOREST_F3_SIDECAR_FFI_ENABLED: "{{ '1' if forest.f3_enabled_sidecar else '0' }}"
+    volumes:
+      - "{{ forest.host.data_path }}:{{ forest.container.data_path }}"
+      - "{{ forest.host.config_path }}/config.toml:{{ forest.container.config_path }}/config.toml"
+      - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}"
+      - "{{ forest.host.config_path }}/filter-list.txt:{{ forest.container.config_path }}/filter-list.txt"
+    restart_policy: always
+    network_mode: host
+    log_driver: "{{ docker_log_driver }}"
+    log_options: "{{ docker_log_options }}"
+    memory: "{{ forest_memory_limit | default(omit) }}"
+    # run as root to avoid permission issues
+    # TODO set devops user uid and gid to 1000 at bootstrap
+    user: 0:0
+    labels:
+      promtail_logging: "true"
+      scrape_location: "forest"
+      instance: "{{ inventory_hostname }}"
+      network: "{{ hostvars[inventory_hostname]['network'] }}"
+  register: forest_docker_start
+
+- name: Wait for Forest node to finish syncing
+  community.docker.docker_container_exec:
+    container: "{{ forest_docker_start.container.Id }}"
+    command: forest-cli sync wait
+    timeout: 300
+  register: forest_sync
+  when: not ansible_check_mode and 'forest_bootnodes' not in group_names

@@ -49,7 +49,6 @@ package-lock.json
 /test/*
 
 /roles/bootnode_monitor/
-/roles/forest_fullnode_docker_role/
 /roles/snapshot_role/
 /roles/lotus_fountain_docker_role/
 /roles/lotus_fullnode_docker_role/

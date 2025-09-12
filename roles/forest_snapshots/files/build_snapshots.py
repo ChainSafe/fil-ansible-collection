@@ -20,23 +20,28 @@ BUILD_DELAY = int(os.getenv("BUILD_DELAY", f"{6 * 60 * 60}"))  # seconds
 BUILD_LATEST_SNAPSHOTS = os.getenv("BUILD_LATEST_SNAPSHOTS", "false").lower() in {"1", "true", "yes"}
 DEFAULT_START_EPOCH = int(os.getenv("DEFAULT_START_EPOCH", "0"))
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
+SNAPSHOT_PATH = os.getenv("SNAPSHOT_PATH", "/data/snapshots")
 
 # Config
-SECONDS_PER_EPOCH = 30
-LITE_DEPTH = 30000
-DIFF_DEPTH = 3000
-LATEST_DEPTH = 2000
-STATE_ROOTS = 900
 QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
-
-# Directories (adjust as needed)
-SNAPSHOT_PATH = os.getenv("SNAPSHOT_PATH", "/data/snapshots")
-FULL_SNAPSHOTS_DIR = f"{SNAPSHOT_PATH}/full"
-LITE_SNAPSHOT_DIR = f"{SNAPSHOT_PATH}/lite"
-DIFF_SNAPSHOT_DIR = f"{SNAPSHOT_PATH}/diff"
-LATEST_SNAPSHOT_DIR = f"{SNAPSHOT_PATH}/latest"
-if SNAPSHOT_FORMAT != "v1":
-    LATEST_SNAPSHOT_DIR = f"{SNAPSHOT_PATH}/latest-{SNAPSHOT_FORMAT}"
+SECONDS_PER_EPOCH = 30
+SNAPSHOT_CONFIGS = {
+    "lite": {
+        "depth": 30000,
+        "state_roots": 2000,
+        "folder": "lite",
+    },
+    "diff": {
+        "depth": 3000,
+        "state_roots": 3000,
+        "folder": "diff",
+    },
+    "latest": {
+        "depth": 2000,
+        "state_roots": 900,
+        "folder": "latest-v2" if SNAPSHOT_FORMAT == "v2" else "latest",
+    },
+}
 
 # Initialize
 rabbit_setup = RabbitMQClient()
@@ -88,63 +93,55 @@ def _resolve_snapshot_path(folder: str, epoch: int) -> Optional[str]:
 
 def get_build_args(
     snapshot_type: str,
-    full_snapshot: str,
     depth: int,
+    state_roots: int,
     epoch: int,
-    diff: bool,
     snapshot: str
-) -> str:
-    """Get build args."""
+) -> list[str]:
+    """Get the build args."""
     args = []
-    if snapshot_type == "latest-v2":
-        wait_for_f3()
-
-    if not full_snapshot:
+    if snapshot_type == "diff":
         args.extend([
-            "/usr/local/bin/forest-tool", "archive", "export",
-            "--epoch", str(epoch),
-            "--output-path", snapshot
+            "forest-cli", "snapshot",
+            "export-diff",
+            "--from", str(epoch),
+            "--to", str(epoch - depth),
         ])
     else:
         args.extend([
-            "/usr/local/bin/forest-cli", "snapshot", "export",
+            "forest-cli", "snapshot",
+            "export",
             "--tipset", str(epoch),
-            "--depth", str(depth),
-            "--format", SNAPSHOT_FORMAT,
-            "--output-path", snapshot
         ])
-        if diff:
-            args.extend([
-                "--diff", str(epoch - depth),
-                "--diff-depth", str(STATE_ROOTS),
-            ])
-        args.append(full_snapshot)
-    return ' '.join(args)
+    if snapshot_type == "latest-v2":
+        wait_for_f3()
+        args.extend(["--format", "v2"])
+
+    args.extend([
+        "--depth", str(state_roots),
+        "--output-path", snapshot
+    ])
+
+    return args
 
 
 def build_snapshot(
     epoch: int,
     folder: str,
-    depth: int,
-    rabbit: RabbitMQClient,
-    full_snapshot: str = None,
-    diff: bool = False
-):
+    args: list[str],
+    diff: bool = False,
+) -> tuple[str, bool]:
     """Export snapshot."""
     snapshot_type = os.path.basename(folder)
     snapshot = f"{folder}/forest_{'diff' if diff else 'snapshot'}_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}{'+3000' if diff else ''}.forest.car.zst"
     logger.info(f"Creating {snapshot_type} Snapshot: {snapshot}")
 
     start_time = time.time()
-    if os.path.exists(snapshot):
-        logger.warning(f"File {snapshot} exists. Skipping")
-        return snapshot, True
 
     return_code = None
     try:
         # Export snapshot via forest-cli
         with metrics.track_processing():
-            args = get_build_args(snapshot_type, full_snapshot, depth, epoch, diff, snapshot)
             os.makedirs(folder, exist_ok=True)
             logger.debug(f"Running command: {args}")
             proc = subprocess.Popen(
@@ -154,39 +151,42 @@ def build_snapshot(
                     "FULLNODE_API_INFO": get_api_info(),
                     "RUST_LOG": "info"
                 },
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                shell=True
             )
             return_code = proc.wait()
-        if return_code != 0:
+        if return_code != 0 or not os.path.exists(snapshot):
             for line in proc.stdout:
                 logger.error(line.rstrip())
             logger.error(f"Snapshot {snapshot_type} {epoch} failed")
             metrics.inc_failure()
             slack_notify(f"Snapshot {snapshot_type} {epoch} failed", "failed")
+            return '', False
         else:
             duration = int(time.time() - start_time)
             snapshot = _resolve_snapshot_path(folder, epoch) or snapshot
             logger.info(f"Snapshot {snapshot_type} finished. Took {secs_to_dhms(duration)}")
             metrics.inc_success()
-            if snapshot_type in ["latest", "latest-v2"]:
-                rabbit.produce(RabbitQueue.SNAPSHOT_LATEST, snapshot)
-                slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success")
-            elif snapshot_type == "lite":
-                rabbit.produce(RabbitQueue.SNAPSHOT, snapshot)
-                slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success")
-            elif snapshot_type == "diff":
-                rabbit.produce(RabbitQueue.SNAPSHOT_DIFF, snapshot)
+            with RabbitMQClient() as rabbit:
+                if snapshot_type in ["latest", "latest-v2"]:
+                    rabbit.produce(RabbitQueue.SNAPSHOT_LATEST, snapshot)
+                    slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success")
+                elif snapshot_type == "lite":
+                    rabbit.produce(RabbitQueue.SNAPSHOT, snapshot)
+                    slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success")
+                elif snapshot_type == "diff":
+                    rabbit.produce(RabbitQueue.SNAPSHOT_DIFF, snapshot)
             return snapshot, True
     except Exception as e:
         metrics.inc_failure()
-        logger.error(f"Error running command: {e}")
-        raise
+        logger.error(f"Error running command: {e}", )
+        return '', False
     except BaseException as e:
         metrics.inc_failure()
         logger.error(f"Error running command: {e}")
-        raise
-    finally:
-        return None, False
+        return '', False
 
 
 def wait_for_epoch_compute(epoch):
@@ -201,76 +201,130 @@ def wait_for_epoch_compute(epoch):
         time.sleep(QUEUE_WAIT_TIMEOUT)
 
 
-def process_historic_epoch(epoch: int):
+def process_historic_epoch(epoch: int, diff: bool = False) -> bool:
     """Build full, lite, and diff snapshots for a given epoch."""
-    logger.info(f"Processing epochs {epoch - LITE_DEPTH} to {epoch} on {CHAIN}")
-
-    # Full snapshot
-    with RabbitMQClient() as rabbit:
-        full_snapshot, success = build_snapshot(epoch, FULL_SNAPSHOTS_DIR, LITE_DEPTH, rabbit)
+    if diff:
+        # Diff snapshots
+        snapshot_config = SNAPSHOT_CONFIGS["diff"]
+        folder = f"{SNAPSHOT_PATH}/{snapshot_config['folder']}"
+        snapshot = f"{folder}/forest_diff_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}+{snapshot_config['depth']}.forest.car.zst"
+        _, success = build_snapshot(
+            epoch,
+            folder,
+            args=get_build_args(
+                "diff",
+                snapshot_config["depth"],
+                snapshot_config["state_roots"],
+                epoch,
+                snapshot
+            ),
+            diff=True
+        )
         if not success:
-            logger.warning(f"Full snapshot for epoch {epoch} failed. Retrying...")
+            logger.warning(f"Diff snapshot for epoch {epoch} failed. Retrying...")
             return False
-
-    # Lite snapshot
-    with RabbitMQClient() as rabbit:
-        _, success = build_snapshot(epoch, LITE_SNAPSHOT_DIR, STATE_ROOTS, rabbit, full_snapshot=full_snapshot)
+    else:
+        # Lite snapshot
+        snapshot_config = SNAPSHOT_CONFIGS["lite"]
+        folder = f"{SNAPSHOT_PATH}/{snapshot_config['folder']}"
+        snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
+        _, success = build_snapshot(
+            epoch,
+            folder,
+            args=get_build_args(
+                "lite",
+                snapshot_config["depth"],
+                snapshot_config["state_roots"],
+                epoch,
+                snapshot
+            )
+        )
         if not success:
             logger.warning(f"Lite snapshot for epoch {epoch} failed. Retrying...")
             return False
-
-    # Diff snapshots
-    with RabbitMQClient() as rabbit:
-        for diff_epoch in range(epoch - LITE_DEPTH, epoch, DIFF_DEPTH):
-            _, success = build_snapshot(
-                diff_epoch, DIFF_SNAPSHOT_DIR, DIFF_DEPTH, rabbit,
-                full_snapshot=full_snapshot, diff=True
-            )
-            if not success:
-                logger.warning(f"Diff snapshot for epoch {diff_epoch} failed. Retrying...")
-                return False
     logger.info(f"Epoch {epoch} built successfully.")
     return True
 
 
+def get_historic_epoch(queue: RabbitQueue):
+    """Get the latest historic epoch."""
+    with RabbitMQClient() as rabbit:
+        _, snapshot_path = rabbit.consume(queue, latest=True)
+    if not snapshot_path:
+        logger.warning("No processed epochs in light queue. Starting over...")
+        return DEFAULT_START_EPOCH
+    return parse_epoch_from_snapshot_path(snapshot_path, DEFAULT_START_EPOCH)
+
+
 def build_historic_snapshots():
     """Build historic snapshots for each epoch in the past."""
-    historic_epoch = DEFAULT_START_EPOCH
-    current_epoch = get_current_epoch()
     while True:
-        with RabbitMQClient() as rabbit:
-            delivery_tag, snapshot_path = rabbit.consume(RabbitQueue.SNAPSHOT, latest=True)
-        if not delivery_tag:
-            logger.warning("No processed epochs in queue. Starting over...")
-        else:
-            historic_epoch = parse_epoch_from_snapshot_path(snapshot_path, DEFAULT_START_EPOCH)
-        epochs_left = current_epoch - historic_epoch
-        # Diff snapshots, lite snapshots and full snapshots
-        metrics.set_total(epochs_left // DIFF_DEPTH + (epochs_left // LITE_DEPTH) * 2)
+        current_epoch = get_current_epoch()
+        logger.info(f"Starting from current epoch: {current_epoch}")
 
-        historic_epoch = (historic_epoch // LITE_DEPTH) * LITE_DEPTH
-        for epoch in range(historic_epoch + LITE_DEPTH, current_epoch, LITE_DEPTH):
-            wait_for_epoch_compute(epoch)
-            if not process_historic_epoch(epoch):
-                logger.warning(f"Epoch {epoch} failed. Restarting...")
-                time.sleep(QUEUE_WAIT_TIMEOUT)
-                break
+        lite_depth = SNAPSHOT_CONFIGS["lite"]["depth"]
+        diff_depth = SNAPSHOT_CONFIGS["diff"]["depth"]
+
+        # Adjust historic epoch to correct start points
+        lite_historic_epoch = (get_historic_epoch(RabbitQueue.SNAPSHOT) // lite_depth) * lite_depth
+        diff_historic_epoch = (get_historic_epoch(RabbitQueue.SNAPSHOT_DIFF) // diff_depth) * diff_depth
+
+        total_executions = ((current_epoch - diff_historic_epoch) // diff_depth) + (current_epoch - lite_historic_epoch // lite_depth)
+        logger.debug(f"Total executions: {total_executions}")
+        metrics.set_total(total_executions)
+
+        if current_epoch - lite_historic_epoch > SNAPSHOT_CONFIGS["lite"]["depth"]:
+            logger.debug(f"Lite historic epoch {lite_historic_epoch} is too old. Starting...")
+            logger.info(f">>> Starting from epoch: {lite_historic_epoch + lite_depth} to {current_epoch}")
+            for epoch in range(lite_historic_epoch + lite_depth, current_epoch, lite_depth):
+                logger.info(f"Waiting for epoch {epoch} compute...")
+                wait_for_epoch_compute(epoch)
+                if not process_historic_epoch(epoch):
+                    logger.warning(f"Lite epoch {epoch} failed. Restarting...")
+                    time.sleep(QUEUE_WAIT_TIMEOUT)
+                    break
+
+        if current_epoch - diff_historic_epoch > SNAPSHOT_CONFIGS["diff"]["depth"]:
+            logger.debug(f"Diff historic epoch {diff_historic_epoch} is too old. Starting...")
+            logger.info(f">>> Starting from epoch: {diff_historic_epoch + diff_depth} to {current_epoch}")
+            for epoch in range(diff_historic_epoch + diff_depth, current_epoch, diff_depth):
+                logger.info(f"Waiting for epoch {epoch} compute...")
+                wait_for_epoch_compute(epoch)
+                if not process_historic_epoch(epoch, diff=True):
+                    logger.warning(f"Diff epoch {epoch} failed. Restarting...")
+                    time.sleep(QUEUE_WAIT_TIMEOUT)
+                    break
+
+        logger.warning("Not enough epochs left to build historic snapshots. Sleeping for 24h...")
+        time.sleep(24 * 60 * 60)
 
 
 def build_latest_snapshots():
     """Build the latest snapshot for the current epoch."""
     while True:
+        epoch = get_current_epoch()
+        previous_epoch = 0
         with RabbitMQClient() as rabbit:
-            epoch = get_current_epoch()
-            previous_epoch = 0
             _, previous_built_snapshot = rabbit.consume(RabbitQueue.SNAPSHOT_LATEST, latest=True)
-            if previous_built_snapshot:
-                previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
-            if (epoch - previous_epoch) > 10:
-                logger.info(f"Processing epoch {epoch} on {CHAIN}")
-                build_snapshot(epoch, LATEST_SNAPSHOT_DIR, LATEST_DEPTH, rabbit)
-            else:
-                logger.warning(f"Latest snapshot for epoch {previous_epoch} is already built. Skipping...")
+        if previous_built_snapshot:
+            previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
+        if (epoch - previous_epoch) > 100:
+            logger.info(f"Processing epoch {epoch} on {CHAIN}")
+            folder = f"{SNAPSHOT_PATH}/{SNAPSHOT_CONFIGS['latest']['folder']}"
+            snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
+            build_snapshot(
+                epoch=epoch,
+                folder=folder,
+                args=get_build_args(
+                    "latest-v2" if SNAPSHOT_FORMAT == "v2" else "latest",
+                    SNAPSHOT_CONFIGS["latest"]["depth"],
+                    SNAPSHOT_CONFIGS["latest"]["state_roots"],
+                    epoch,
+                    snapshot
+                )
+            )
+        else:
+            logger.warning(f"Latest snapshot for epoch {previous_epoch} recently was already built. Skipping...")
         logger.info(f"Sleeping for {secs_to_dhms(BUILD_DELAY)}...")
         time.sleep(BUILD_DELAY)
 

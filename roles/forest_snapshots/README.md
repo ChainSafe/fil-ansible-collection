@@ -57,10 +57,7 @@ external_disk:
 # Docker Compose
 docker_compose:
   # Path where Compose files and state are placed.
-  project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ network }}"
-
-# Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
-network: "testnet"
+  project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ forest.network }}"
 
 # Forest configuration
 forest:
@@ -69,6 +66,8 @@ forest:
     name: ghcr.io/chainsafe/forest
     # Container image tag.
     tag: latest-fat
+  # Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
+  network: "testnet"
   # Node type descriptor used in naming; archive nodes keep full chain state.
   node_type: "archive"
   # Application log verbosity (debug, info, warning, error).
@@ -84,13 +83,13 @@ forest:
     - "--no-gc"
   host:
     # Forest config directory on host.
-    config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
+    config_path: "/home/{{ ansible_user }}/forest/{{ forest.network }}/config"
     # Forest data directory on host.
     data_path: "/data/forest"
     # Snapshot output directory on host.
-    snapshot_path: "/data/snapshots/{{ network }}"
+    snapshot_path: "/data/snapshots/{{ forest.network }}"
     # Helper scripts directory on host.
-    scripts_path: "/home/{{ ansible_user }}/forest/{{ network }}/scripts"
+    scripts_path: "/home/{{ ansible_user }}/forest/{{ forest.network }}/scripts"
   container:
     # Config directory inside container.
     config_path: "/home/forest/config"
@@ -146,14 +145,14 @@ rabbitmq:
   # RabbitMQ password.
   password: "password"
   # Host path for RabbitMQ data.
-  data_path: "/data/rabbitmq/{{ network }}"
+  data_path: "/data/rabbitmq/{{ forest.network }}"
 
 # # Grafana Alloy (Metrics/Logs Shipping)
 grafana_alloy:
   # Whether to deploy Grafana Alloy sidecar.
   enabled: true
   # Host path for Alloy configs.
-  config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ network }}"
+  config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ forest.network }}"
   # Grafana Alloy container image.
   image: "grafana/alloy:latest"
   # Grafana Cloud API key used for remote_write.
@@ -210,9 +209,9 @@ Example playbook enabling latest snapshots building and uploads to R2:
   hosts: snapshotters
   become: true
   vars:
-    network: calibration
     forest:
       node_type: archive
+      network: calibnet
       build_snapshots_latest:
         enabled: true
         format: v1

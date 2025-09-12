@@ -4,11 +4,18 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-job-healthcheck: &default-job-healthcheck
+  test: [ "CMD", "curl", "-f", "http://127.0.0.1:{{ forest.metrics.port }}/metrics" ]
+  interval: 30s
+  timeout: 10s
+  retries: 10
+  start_period: 10s
+
 services:
   forest:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
     hostname: forest
-    container_name: forest-{{ network }}-{{ forest.node_type }}
+    container_name: forest-{{ forest.network }}-{{ forest.node_type }}
     entrypoint: /bin/bash
     command: [ "/scripts/forest.sh" ]
     env_file: [ ".env" ]
@@ -20,10 +27,11 @@ services:
     volumes:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "{{ forest.host.snapshot_archive_path }}:{{ forest.container.snapshot_archive_path }}"
       - "{{ forest.host.config_path }}:{{ forest.container.config_path }}:ro"
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://127.0.0.1:2346/readyz" ]
+      test: [ "CMD-SHELL", "forest-cli wait-api && forest-cli sync wait || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -44,7 +52,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     hostname: rabbitmq
-    container_name: rabbitmq-{{ network }}
+    container_name: rabbitmq-{{ forest.network }}
     deploy:
       replicas: {{ 1 if rabbitmq.enabled else 0 }}
     environment:
@@ -68,7 +76,7 @@ services:
 
   compute-state:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: compute-state-{{ network }}
+    container_name: compute-state-{{ forest.network }}
     hostname: compute-state
     depends_on:
       - rabbitmq
@@ -93,10 +101,11 @@ services:
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "metrics:{{ forest.container.metrics_path }}"
+    healthcheck: *default-job-healthcheck
 
   build-snapshots-latest:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: build-snapshots-latest-{{ network }}
+    container_name: build-snapshots-latest-{{ forest.network }}
     hostname: build-snapshots-latest
     depends_on:
       - rabbitmq
@@ -122,10 +131,11 @@ services:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+    healthcheck: *default-job-healthcheck
 
   build-snapshots-historic:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: build-snapshots-historic-{{ network }}
+    container_name: build-snapshots-historic-{{ forest.network }}
     hostname: build-snapshots-historic
     depends_on:
       - rabbitmq
@@ -152,10 +162,11 @@ services:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+    healthcheck: *default-job-healthcheck
 
   upload-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: upload-snapshots-{{ network }}
+    container_name: upload-snapshots-{{ forest.network }}
     hostname: upload-snapshots
     depends_on:
       - rabbitmq
@@ -180,10 +191,11 @@ services:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+    healthcheck: *default-job-healthcheck
 
   validate-snapshots:
     image: {{ forest.image.name }}:{{ forest.image.tag }}
-    container_name: validate-snapshots-{{ network }}
+    container_name: validate-snapshots-{{ forest.network }}
     hostname: validate-snapshots
     depends_on:
       - rabbitmq
@@ -195,7 +207,7 @@ services:
     command: [ "/scripts/validate_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
-      FOREST_HOST: forest-{{ network }}-{{ forest.node_type }}
+      FOREST_HOST: forest-{{ forest.network }}-{{ forest.node_type }}
       RABBITMQ_HOST: rabbitmq
     logging: *default-logging
     restart: on-failure:5
@@ -210,10 +222,11 @@ services:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
       - "metrics:{{ forest.container.metrics_path }}"
+    healthcheck: *default-job-healthcheck
 
   grafana-alloy:
     image: grafana/alloy:latest
-    container_name: grafana-alloy-{{ network }}
+    container_name: grafana-alloy-{{ forest.network }}
     restart: always
     deploy:
       replicas: {{ 1 if grafana_alloy.enabled else 0 }}
@@ -239,5 +252,5 @@ volumes:
 
 networks:
   default:
-    name: forest-{{ network }}-{{ forest.node_type }}
+    name: forest-{{ forest.network }}-{{ forest.node_type }}
     driver: bridge

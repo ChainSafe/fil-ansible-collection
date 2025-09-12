@@ -7,7 +7,8 @@ r2:
   # Secret key used for uploads.
   secret_access_key: ""
   # Bucket name where snapshots are stored.
-  bucket_name: "forest-archive"
+  archive_bucket_name: "forest-archive"
+  latest_bucket_name: "forest-snapshots-v2"
 
 # External Disk / Filesystem
 external_disk:
@@ -25,10 +26,7 @@ external_disk:
 # Docker Compose
 docker_compose:
   # Path where Compose files and state are placed.
-  project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ network }}"
-
-# Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
-network: "testnet"
+  project_path: "/home/{{ ansible_user }}/forest-{{ forest.node_type }}-{{ forest.network }}"
 
 # Forest configuration
 forest:
@@ -37,6 +35,8 @@ forest:
     name: ghcr.io/chainsafe/forest
     # Container image tag.
     tag: latest-fat
+  # Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
+  network: "testnet"
   # Node type descriptor used in naming; archive nodes keep full chain state.
   node_type: "archive"
   # Application log verbosity (debug, info, warning, error).
@@ -52,13 +52,15 @@ forest:
     - "--no-gc"
   host:
     # Forest config directory on host.
-    config_path: "/home/{{ ansible_user }}/forest/{{ network }}/config"
+    config_path: "/home/{{ ansible_user }}/forest/{{ forest.network }}/config"
     # Forest data directory on host.
     data_path: "/data/forest"
-    # Snapshot output directory on host.
-    snapshot_path: "/data/snapshots/{{ network }}"
+    # Snapshot path on host.
+    snapshot_path: "/home/{{ ansible_user }}/forest/{{ forest.network }}"
+    # Archival snapshot output directory on host.
+    snapshot_archive_path: "/data/snapshots/{{ forest.network }}"
     # Helper scripts directory on host.
-    scripts_path: "/home/{{ ansible_user }}/forest/{{ network }}/scripts"
+    scripts_path: "/home/{{ ansible_user }}/forest/{{ forest.network }}/scripts"
   container:
     # Config directory inside container.
     config_path: "/home/forest/config"
@@ -68,6 +70,8 @@ forest:
     scripts_path: "/scripts"
     # Snapshot output path inside container.
     snapshot_path: "/home/forest/snapshots"
+    # Archival snapshot output path inside container.
+    snapshot_archive_path: "/home/forest/archive"
     # Metrics/logs path inside container.
     metrics_path: "/data/metrics"
   compute:
@@ -97,9 +101,21 @@ forest:
   validate_snapshots:
     # Enable validator service to verify produced snapshots.
     enabled: false
+  rpc:
+    # Enable RPC service.
+    enabled: true
+    # RPC port exposed by Forest.
+    port: 2345
+    # RPC port on host.
+    host_port: 32345
   metrics:
+    # Enable metrics service.
+    enabled: true
     # Metrics port exposed by Forest.
     port: 6116
+    # Metrics port on host.
+    host_port: 36116
+
   # Whether to import a provided libp2p private key.
   import_libp2p_private_key: false
   # The libp2p private key material (handle securely).
@@ -114,14 +130,14 @@ rabbitmq:
   # RabbitMQ password.
   password: "password"
   # Host path for RabbitMQ data.
-  data_path: "/data/rabbitmq/{{ network }}"
+  data_path: "/data/rabbitmq/{{ forest.network }}"
 
 # # Grafana Alloy (Metrics/Logs Shipping)
 grafana_alloy:
   # Whether to deploy Grafana Alloy sidecar.
   enabled: true
   # Host path for Alloy configs.
-  config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ network }}"
+  config_path: "/home/{{ ansible_user }}/grafana-alloy/{{ forest.network }}"
   # Grafana Alloy container image.
   image: "grafana/alloy:latest"
   # Grafana Cloud API key used for remote_write.

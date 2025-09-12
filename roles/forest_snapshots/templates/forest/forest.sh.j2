@@ -14,7 +14,7 @@ fi
 
 forest \
   {{ forest.container_extra_args | join(' ') }} \
-  --chain "{{ network }}" \
+  --chain "{{ forest.network }}" \
   --auto-download-snapshot  \
   --save-token {{ forest.container.data_path }}/token \
   --config "{{ forest.container.config_path }}/config.toml"

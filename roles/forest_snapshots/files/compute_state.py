@@ -78,7 +78,10 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             if progress > 0:
                 time_estimate = secs_to_dhms(int(time_taken / metrics.get_progress()))
                 logger.info(
-                    f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\nTook time: {secs_to_dhms(time_taken)}.\nTime left: {time_estimate}")
+                    f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\n" +
+                    f"Took time: {secs_to_dhms(time_taken)}.\n" +
+                    f"Time left: {time_estimate}"
+                )
             rabbit.produce(RabbitQueue.COMPUTE, str(epoch + COMPUTE_BATCH_SIZE))
     except Exception as e:
         metrics.inc_failure()
@@ -100,7 +103,7 @@ def main():
         historic_start_epoch = (historic_start_epoch // COMPUTE_BATCH_SIZE) * COMPUTE_BATCH_SIZE
         epochs_left = current_epoch - historic_start_epoch
         metrics.set_total(epochs_left // COMPUTE_BATCH_SIZE)
-        if current_epoch > historic_start_epoch:
+        if current_epoch - historic_start_epoch > 100:
             for epoch in range(historic_start_epoch, current_epoch, COMPUTE_BATCH_SIZE):
                 with RabbitMQClient() as rabbit:
                     try:
@@ -110,6 +113,10 @@ def main():
                         time.sleep(600)
                         break
                 time.sleep(10)
+        else:
+            logger.info("Epochs compute finished. Sleeping for 1h...")
+            time.sleep(60 * 60)
+            continue
 
 
 if __name__ == "__main__":

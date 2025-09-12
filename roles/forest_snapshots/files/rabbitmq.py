@@ -54,8 +54,8 @@ class RabbitMQClient:
                 pika.ConnectionParameters(
                     host=RABBIT_HOST,
                     credentials=credentials,
-                    heartbeat=600,
-                    blocked_connection_timeout=600,
+                    heartbeat=3600,
+                    blocked_connection_timeout=3600,
                     connection_attempts=5,
                     retry_delay=2.0,
                 )

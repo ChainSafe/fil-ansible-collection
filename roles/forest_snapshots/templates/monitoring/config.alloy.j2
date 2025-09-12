@@ -18,10 +18,6 @@ discovery.relabel "logs_integrations_docker" {
         target_label = "service_name"
     }
     rule {
-        target_label = "instance"
-        replacement  = "{{ inventory_hostname }}"
-    }
-    rule {
         source_labels = ["__meta_docker_container_name"]
         regex         = "grafana-alloy"
         action        = "drop"
@@ -54,11 +50,6 @@ prometheus.relabel "docker" {
     ]
 
     rule {
-        action       = "replace"
-        target_label = "instance"
-        replacement  = "{{ inventory_hostname }}"
-    }
-    rule {
         action        = "drop"
         source_labels = ["__meta_docker_container_name"]
         regex         = "grafana-alloy"
@@ -70,55 +61,26 @@ prometheus.scrape "forest_metrics" {
         {
             "__address__" = "forest:{{ forest.metrics.port }}",
             job = "compute-state",
-            instance = "{{ inventory_hostname }}",
         },
         {
-            "__address__" = "build-snapshots:{{ forest.metrics.port }}",
-            job = "build-snapshots",
-            instance = "{{ inventory_hostname }}",
+            "__address__" = "build-snapshots-latest:{{ forest.metrics.port }}",
+            job = "build-snapshots-latest",
+        },
+        {
+            "__address__" = "build-snapshots-historic:{{ forest.metrics.port }}",
+            job = "build-snapshots-historic",
         },
         {
             "__address__" = "validate-snapshots:{{ forest.metrics.port }}",
             job = "validate-snapshots",
-            instance = "{{ inventory_hostname }}",
         },
         {
             "__address__" = "download-snapshots:{{ forest.metrics.port }}",
             job = "download-snapshots",
-            instance = "{{ inventory_hostname }}",
         },
         {
             "__address__" = "upload-snapshots:{{ forest.metrics.port }}",
             job = "upload-snapshots",
-            instance = "{{ inventory_hostname }}",
-        },
-    ]
-
-    scrape_interval = "15s"
-    forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
-}
-
-prometheus.scrape "service_metrics" {
-    targets = [
-        {
-            "__address__" = "compute-state:{{ forest.metrics.port }}",
-            job = "compute-state",
-            instance = "{{ inventory_hostname }}",
-        },
-        {
-            "__address__" = "build-snapshots:{{ forest.metrics.port }}",
-            job = "build-snapshots",
-            instance = "{{ inventory_hostname }}",
-        },
-        {
-            "__address__" = "validate-snapshots:{{ forest.metrics.port }}",
-            job = "validate-snapshots",
-            instance = "{{ inventory_hostname }}",
-        },
-        {
-            "__address__" = "upload-snapshots:{{ forest.metrics.port }}",
-            job = "upload-snapshots",
-            instance = "{{ inventory_hostname }}",
         },
     ]
 
@@ -139,6 +101,9 @@ prometheus.scrape "metrics_scrape" {
 }
 
 prometheus.remote_write "grafana_cloud" {
+    external_labels = {
+        instance = "{{ inventory_hostname }}",
+    }
     endpoint {
       url = sys.env("METRICS_ENDPOINT")
 
@@ -150,6 +115,10 @@ prometheus.remote_write "grafana_cloud" {
 }
 
 loki.write "grafana_cloud" {
+    external_labels = {
+        instance = "{{ inventory_hostname }}",
+    }
+
     endpoint {
       url = sys.env("LOGS_ENDPOINT")
 

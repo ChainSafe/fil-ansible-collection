@@ -52,8 +52,8 @@ def gather_archive_metadata(archive_metadata: list[str], archive_info: list[str]
     return json.dumps(data, indent=2)
 
 
-def forest_validate(snapshot_path: str) -> bool:
-    """Validate a snapshot using Forest CLI."""
+def upload_metadata(snapshot_path: str):
+    """Upload metadata to R2."""
     result = {"success": False}
     with open(snapshot_path, "rb") as f:
         snapshot_hash = hashlib.sha256(f.read()).hexdigest()
@@ -94,10 +94,44 @@ def forest_validate(snapshot_path: str) -> bool:
     return result["success"]
 
 
+def forest_validate(snapshot_path: str) -> bool:
+    """Validate a snapshot using Forest CLI."""
+    try:
+        args = [
+            "/usr/local/bin/forest-tool", "snapshot", "validate",
+            "--check-network", CHAIN
+        ]
+        if CHAIN == "mainnet":
+            print(f"⚡ Running light checks on {snapshot_path} for {CHAIN}...")
+            args.extend([
+                "--check-links", "0",
+                "--check-stateroots", "5"
+            ])
+        else:
+            print(f"✅ Running full checks on {snapshot_path} for {CHAIN}...")
+            args.extend([
+                "--check-links", "2000",
+                "--check-stateroots", "10"
+            ])
+        args.append(snapshot_path)
+        subprocess.run(
+            args,
+            env={
+                "FULLNODE_API_INFO": get_api_info()
+            },
+            capture_output=True, text=True, check=True
+        )
+    except subprocess.CalledProcessError as err:
+        logger.error(f"❌ Error validating snapshot on forest: {err.stderr}", exc_info=True)
+        return False
+
+    return upload_metadata(snapshot_path)
+
+
 def validate_snapshot(snapshot_path: str) -> bool:
     """Wrapper around upload that also produces RabbitMQ status messages."""
     result = {"success": False}
-    with metrics.track_upload():
+    with metrics.track_processing():
         result["success"] = forest_validate(snapshot_path)
 
     return result["success"]

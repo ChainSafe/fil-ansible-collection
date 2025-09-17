@@ -1,5 +1,5 @@
 ---
-ansible_user: root
+ansible_user: ubuntu
 devops_user: devops
 devops_google_group: DevOps
 backup_user: loginbackup

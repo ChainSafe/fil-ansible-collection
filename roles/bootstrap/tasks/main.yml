@@ -19,6 +19,8 @@
       loop:
         - "{{ devops_user }}"
         - "{{ backup_user }}"
+      check_mode: false
+
     - name: Set Github Actions SSH access for default users
       ansible.posix.authorized_key:
         user: "{{ item }}"
@@ -28,6 +30,7 @@
       loop:
         - "{{ devops_user }}"
         - "{{ backup_user }}"
+
     - name: Set AWX SSH access for default users
       ansible.posix.authorized_key:
         user: "{{ item }}"
@@ -37,6 +40,7 @@
       loop:
         - "{{ devops_user }}"
         - "{{ backup_user }}"
+
     - name: Allow users of sudo group to sudo without a password
       community.general.sudoers:
         name: allow-sudo-without-password
@@ -44,10 +48,6 @@
         group: sudo
         commands: ALL
         nopassword: true
-
-- name: Setup OpkSSH
-  ansible.builtin.include_role:
-    name: chainsafe.general.filecoin_opkssh
 
 - name: Configure sshd
   ansible.builtin.lineinfile:

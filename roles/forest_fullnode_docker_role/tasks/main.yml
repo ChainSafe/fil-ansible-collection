@@ -100,7 +100,7 @@
 - name: Wait for Forest node to finish syncing
   community.docker.docker_container_exec:
     container: "{{ forest_docker_start.container.Id }}"
-    command: forest-cli sync wait
+    command: sleep 30 && forest-cli sync wait
     timeout: 300
   register: forest_sync
   when: not ansible_check_mode and 'forest_bootnodes' not in group_names and forest_docker_start.changed

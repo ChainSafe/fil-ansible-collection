@@ -28,3 +28,18 @@
     special_time: daily
     job: >
       docker system prune -af  --filter "until=$((30*24))h"
+
+- name: Get global IPv6 info
+  ansible.builtin.set_fact:
+    ipv6_info: "{{ hostvars[inventory_hostname]['ansible_' + ansible_default_ipv6.interface]['ipv6'] | selectattr('scope', 'equalto', 'global') | first }}"
+
+- name: Configure Docker daemon for IPv6
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+    content: |
+      {
+        "ipv6": true,
+        "fixed-cidr-v6": "{{ ipv6_info.address }}/80"
+      }
+  notify: Restart docker

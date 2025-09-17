@@ -1,5 +1,6 @@
 ---
 - name: Install common packages
   ansible.builtin.include_tasks: install_common_packages.yml
+
 - name: Install docker and docker compose
   ansible.builtin.include_tasks: install_docker_and_docker_compose.yml

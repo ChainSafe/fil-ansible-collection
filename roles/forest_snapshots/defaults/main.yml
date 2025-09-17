@@ -38,13 +38,13 @@ forest:
     # Container image tag.
     tag: latest-fat
   # Filecoin network identifier (e.g., `mainnet`, `calibnet`). Used in names and configs.
-  network: "testnet"
+  network: "calibnet"
   # Node type descriptor used in naming; archive nodes keep full chain state.
   node_type: "archive"
   # Application log verbosity (debug, info, warning, error).
   log_level: "info" # debug, info, warning, error
   # Rust log filter passed to the process (debug, info, warn, error, off).
-  rust_log_level: "warn" # debug, info, warn, error, off
+  rust_log_level: "info" # debug, info, warn, error, off
   # Enables F3 sidecar FFI if required.
   f3_enabled_sidecar: false
   # Target number of peers to connect to.

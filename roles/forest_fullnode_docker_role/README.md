@@ -1,21 +1,27 @@
-## Role: forest_fullnode_docker_role
+# Role: forest_fullnode_docker_role
 
-Deploy and manage a Forest Filecoin full node in a Docker container. The role creates required directories, renders configuration and helper scripts, ensures NTP is running, then starts the Forest container with sane defaults and logging.
+Deploy and manage a Forest Filecoin full node in a Docker container.
+The role creates required directories, renders configuration and helper scripts,
+ensures NTP is running, then starts the Forest container with sane defaults and
+logging.
 
 This role is part of the `chainsafe.filecoin` collection.
 
 ---
 
-### Requirements
+## Requirements
+
 - Linux host with Docker installed and running
 - Ansible collections:
   - `community.docker (>=4.0.0,<5.0.0)`
   - `community.general (>=10.0.0,<11.0.0)`
   - `ansible.posix (>=1.0.0,<2.0.0)`
 
-Ensure Docker is present beforehand (e.g., via `chainsafe.filecoin.install_packages`).
+Ensure Docker is present beforehand (e.g., via
+`chainsafe.filecoin.install_packages`).
 
-### Role Variables
+## Role Variables
+
 Defined in `defaults/main.yml`:
 
 ```yaml
@@ -25,14 +31,12 @@ docker_log_options:
   max-file: "5"
   max-size: 100m
 
-# Filecoin network (e.g., mainnet, calibration, testnet)
-network: "testnet"
-
 forest:
   image:
     name: ghcr.io/chainsafe/forest
     tag: latest-fat
   node_type: fullnode
+  network: calibnet
   container_extra_args: []
   rust_log_level: "warn"   # debug, info, warn, error, off
   f3_enabled_sidecar: false
@@ -63,26 +67,36 @@ forest:
 ```
 
 Notes:
-- Container runs as `root` (0:0) to avoid permission issues on volumes.
-- The container name format is `forest-<network>-<node_type>` and uses `network_mode: host`.
 
-### Templates and Files
+- Container runs as `root` (0:0) to avoid permission issues on volumes.
+- The container name format is `forest-<network>-<node_type>` and uses
+- `network_mode: host`.
+
+## Templates and Files
+
 - `templates/config.toml.j2` → `{{ forest.host.config_path }}/config.toml`
 - `templates/filter-list.txt` → `{{ forest.host.config_path }}/filter-list.txt`
 - `templates/forest.sh.j2` → `{{ forest.host.scripts_path }}/forest.sh`
 
-### Handlers
-- `Restart_forest_docker`: restarts the container `docker restart "forest-{{ network }}-{{ forest.node_type }}"` when config/script changes.
+## Handlers
 
-### Tasks Overview
+- `Restart_forest_docker`: restarts the container
+`docker restart "forest-{{ forest.network }}-{{ forest.node_type }}"`
+- when config/script changes.
+
+## Tasks Overview
+
 - Create directories for data, scripts, and config
 - Render filter list and `config.toml`
 - Ensure `ntp` package is installed and service is enabled/running
 - Render `forest.sh` runner script
-- Start or update the `forest` container with logging, labels, volumes and environment
-- Optionally wait for sync completion (skipped for groups containing `forest_bootnodes`)
+- Start or update the `forest` container with logging, labels, volumes
+and environment
+- Optionally wait for sync completion (skipped for groups containing
+`forest_bootnodes`)
 
-### Usage
+## Usage
+
 Example playbook:
 
 ```yaml
@@ -91,12 +105,12 @@ Example playbook:
   hosts: forest_fullnodes
   become: true
   vars:
-    network: calibration
     forest:
       image:
         name: ghcr.io/chainsafe/forest
         tag: latest-fat
       node_type: fullnode
+      network: calibnet
       rust_log_level: info
       f3_enabled_sidecar: false
       host:
@@ -115,19 +129,27 @@ Example playbook:
     - chainsafe.filecoin.forest_fullnode_docker_role
 ```
 
-To override configuration, set variables in `group_vars`/`host_vars` or via `vars` as above. Review and adapt `config.toml.j2` for advanced tuning if needed.
+To override configuration, set variables in
+`group_vars`/`host_vars` or via `vars` as above.
+Review and adapt `config.toml.j2` for advanced tuning if needed.
 
-### Dependencies
+## Dependencies
+
 - Docker engine on the target host
 - Ansible collections listed in Requirements
 
-### Troubleshooting
-- Container restarts continuously: check `forest.log.txt` under `{{ forest.host.scripts_path }}` and ensure the `config.toml` is valid.
-- Ports in use: adjust `forest.rpc.host_port` and `forest.metrics.host_port`.
-- Slow sync: ensure disk and network performance meet Forest recommendations and that `ntp` is active.
+## Troubleshooting
 
-### License
+- Container restarts continuously: check `forest.log.txt` under
+- `{{ forest.host.scripts_path }}` and ensure the `config.toml` is valid.
+- Ports in use: adjust `forest.rpc.host_port` and `forest.metrics.host_port`.
+- Slow sync: ensure disk and network performance meet Forest recommendations
+- and that `ntp` is active.
+
+## License
+
 See `LICENSE.md` at the collection root.
 
-### Author
+## Author
+
 ChainSafe Systems

@@ -66,7 +66,7 @@
 
 - name: Start forest node container
   community.docker.docker_container:
-    name: "forest-{{ network }}-{{ forest.node_type }}"
+    name: "forest-{{ forest.network }}-{{ forest.node_type }}"
     state: started
     image: "{{ forest.image.name }}:{{ forest.image.tag }}"
     pull: true
@@ -74,7 +74,7 @@
     entrypoint: /bin/bash
     # TODO add a genesis file if necessary --genesis="{{ forest_path }}/genesis.car"
     # TODO garbage collector var --env "FOREST_GC_TRIGGER_FACTOR=1.4" (should be added at issue resolution https://github.com/ChainSafe/forest/issues/3863)
-    command: "{{ forest.container.scripts_path }}/forest.sh > {{ forest.container.scripts_path }}/forest.log.txt 2>&1"
+    command: "{{ forest.container.scripts_path }}/forest.sh > /var/log/forest.log 2>/var/log/forest.err"
     env:
       FOREST_F3_SIDECAR_FFI_ENABLED: "{{ '1' if forest.f3_enabled_sidecar else '0' }}"
     volumes:
@@ -94,7 +94,7 @@
       promtail_logging: "true"
       scrape_location: "forest"
       instance: "{{ inventory_hostname }}"
-      network: "{{ hostvars[inventory_hostname]['network'] }}"
+      network: "{{ hostvars[inventory_hostname]['forest']['network'] }}"
   register: forest_docker_start
 
 - name: Wait for Forest node to finish syncing

@@ -5,13 +5,12 @@ docker_log_options:
   max-file: "5"
   max-size: 100m
 
-network: "testnet"
-
 forest:
   image:
     name: ghcr.io/chainsafe/forest
     tag: latest-fat
   node_type: fullnode
+  network: "calibnet"
   container_extra_args: []
   rust_log_level: "warn" # debug, info, warn, error, off
   f3_enabled_sidecar: false
@@ -21,9 +20,9 @@ forest:
   host:
     config_path: /home/{{ ansible_user }}/forest/config
     data_path: /home/{{ ansible_user }}/forest/forest_data
-    scripts_path: /home/{{ ansible_user }}/forest/forest_data/script
+    scripts_path: /home/{{ ansible_user }}/forest/script
   container:
-    config_path: /home/forest
+    config_path: /home/forest/config
     data_path: /home/forest/forest_data
     scripts_path: /script
   rpc:

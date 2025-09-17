@@ -103,4 +103,4 @@
     command: forest-cli sync wait
     timeout: 300
   register: forest_sync
-  when: not ansible_check_mode and 'forest_bootnodes' not in group_names
+  when: not ansible_check_mode and 'forest_bootnodes' not in group_names and forest_docker_start.changed

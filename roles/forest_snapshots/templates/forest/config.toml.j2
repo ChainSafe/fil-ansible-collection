@@ -8,7 +8,7 @@ metrics_address = "127.0.0.1:{{ forest.metrics.port }}"
 rpc_address = "0.0.0.0:{{ forest.rpc.port }}"
 
 [network]
-listening_multiaddrs = ["/ip4/0.0.0.0/tcp/34000"]
+listening_multiaddrs = ["/ip4/0.0.0.0/tcp/34000", "/ip6/::/tcp/34000"]
 #Kademlia option enforce p2p connections.
 kademlia = true
 #Amount of peers the node should maintain a connection with

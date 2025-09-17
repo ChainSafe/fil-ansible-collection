@@ -17,6 +17,7 @@ logger = setup_logger(os.path.basename(__file__))
 CHAIN = os.getenv("CHAIN", "testnet")
 ARCHIVE_BUCKET_NAME = os.getenv("R2_ARCHIVE_BUCKET_NAME", "my-bucket")
 LATEST_BUCKET_NAME = os.getenv("R2_LATEST_BUCKET_NAME", "my-bucket")
+LATEST_V2_BUCKET_NAME = os.getenv("R2_LATEST_V2_BUCKET_NAME", "my-bucket")
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
 
 # Config
@@ -54,7 +55,12 @@ def r2_upload_artifact(file_path: str) -> bool:
         basename = os.path.basename(file_path)
         destination = os.path.basename(os.path.dirname(file_path))
         key_prefix = f"{CHAIN}/{destination}/"
-        bucket_name = ARCHIVE_BUCKET_NAME if destination != "latest-v2" else LATEST_BUCKET_NAME
+        if destination == "latest-v2":
+            bucket_name = LATEST_V2_BUCKET_NAME
+        elif destination == "latest":
+            bucket_name = LATEST_BUCKET_NAME
+        else:
+            bucket_name = ARCHIVE_BUCKET_NAME
         try:
             s3.head_object(Bucket=bucket_name, Key=key_prefix + basename)
             logger.warning(f"Snapshot {file_path} already exists in s3://{bucket_name}/{key_prefix}")
@@ -155,5 +161,5 @@ def main():
 
 
 if __name__ == "__main__":
-    metrics = Metrics(prefix="forest_upload_snapshot_", port=METRICS_PORT)
+    metrics = Metrics(port=METRICS_PORT)
     main()

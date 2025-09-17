@@ -8,20 +8,20 @@ logger = setup_logger(os.path.basename(__file__))
 
 
 class Metrics:
-    def __init__(self, prefix="snapshot_", port=8000):
+    def __init__(self, port=8000):
         # Counters
-        self.success_counter = Counter(f"{prefix}_success_total", "Total successfully processed snapshots")
-        self.failure_counter = Counter(f"{prefix}_failure_total", "Total failed processed snapshots")
+        self.success_counter = Counter("forest_success_total", "Total successfully processed snapshots")
+        self.failure_counter = Counter("forest_failure_total", "Total failed processed snapshots")
 
         # Progress gauge
-        self.total_messages = Gauge(f"{prefix}_total", "Total snapshots to process")
-        self.progress = Gauge(f"{prefix}_progress", "Progress: processed snapshots / total")
+        self.total_messages = Gauge("forest_total", "Total snapshots to process")
+        self.progress = Gauge("forest_progress", "Progress: processed snapshots / total")
 
         # Durations
-        self.download_duration = Histogram(f"{prefix}_download_duration_seconds",
+        self.download_duration = Histogram("forest_download_duration_seconds",
                                            "Time spent downloading snapshots")
-        self.upload_duration = Histogram(f"{prefix}_upload_duration_seconds", "Time spent uploading snapshots")
-        self.processing_duration = Histogram(f"{prefix}_processing_duration_seconds",
+        self.upload_duration = Histogram("forest_upload_duration_seconds", "Time spent uploading snapshots")
+        self.processing_duration = Histogram("forest_processing_duration_seconds",
                                              "Total processing time per snapshot")
 
         # Start Prometheus HTTP metrics server

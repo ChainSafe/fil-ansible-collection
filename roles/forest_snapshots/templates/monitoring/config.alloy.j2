@@ -1,5 +1,5 @@
 logging {
-  level  = "info"
+  level  = "warn"
   format = "json"
 }
 
@@ -28,8 +28,22 @@ loki.source.docker "default" {
     host = "unix:///var/run/docker.sock"
     targets = discovery.relabel.logs_integrations_docker.output
     forward_to = [
-        loki.write.grafana_cloud.receiver,
+        loki.process.default.receiver,
     ]
+}
+
+loki.process "default" {
+
+  stage.drop {
+    source = "service_name"
+    value = "grafana-alloy-{{ forest.network }}"
+  }
+
+  stage.docker {}
+
+  forward_to = [
+    loki.write.grafana_cloud.receiver,
+  ]
 }
 
 prometheus.exporter.cadvisor "docker" {
@@ -102,7 +116,8 @@ prometheus.scrape "metrics_scrape" {
 
 prometheus.remote_write "grafana_cloud" {
     external_labels = {
-        instance = "{{ inventory_hostname }}",
+        node = "{{ inventory_hostname }}",
+        chain = "{{ forest.network }}",
     }
     endpoint {
       url = sys.env("METRICS_ENDPOINT")
@@ -116,7 +131,8 @@ prometheus.remote_write "grafana_cloud" {
 
 loki.write "grafana_cloud" {
     external_labels = {
-        instance = "{{ inventory_hostname }}",
+        node = "{{ inventory_hostname }}",
+        chain = "{{ forest.network }}",
     }
 
     endpoint {

@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp, secs_to_dhms, wait_for_f3
+from forest_helpers import get_api_info, get_current_epoch, get_genesis_timestamp, secs_to_dhms, wait_for_f3, SNAPSHOT_CONFIGS
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
@@ -15,33 +15,17 @@ logger = setup_logger(os.path.basename(__file__))
 
 # Env variables
 CHAIN = os.getenv("CHAIN", "testnet")
-SNAPSHOT_FORMAT = os.getenv("SNAPSHOT_FORMAT", "v1")
-BUILD_DELAY = int(os.getenv("BUILD_DELAY", f"{6 * 60 * 60}"))  # seconds
+BUILD_DELAY = int(os.getenv("BUILD_DELAY", f"{20 * 60}"))  # 20 minutes
 BUILD_LATEST_SNAPSHOTS = os.getenv("BUILD_LATEST_SNAPSHOTS", "false").lower() in {"1", "true", "yes"}
+WAIT_FOR_COMPUTATION = os.getenv("WAIT_FOR_COMPUTATION", "true").lower() in {"1", "true", "yes"}
 DEFAULT_START_EPOCH = int(os.getenv("DEFAULT_START_EPOCH", "0"))
-METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
+METRICS_PORT = int(os.getenv("METRICS_PORT", "6116"))
 SNAPSHOT_PATH = os.getenv("SNAPSHOT_PATH", "/data/snapshots")
 
 # Config
 QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
 SECONDS_PER_EPOCH = 30
-SNAPSHOT_CONFIGS = {
-    "lite": {
-        "depth": 30000,
-        "state_roots": 2000,
-        "folder": "lite",
-    },
-    "diff": {
-        "depth": 3000,
-        "state_roots": 3000,
-        "folder": "diff",
-    },
-    "latest": {
-        "depth": 2000,
-        "state_roots": 900,
-        "folder": "latest-v2" if SNAPSHOT_FORMAT == "v2" else "latest",
-    },
-}
+
 
 # Initialize
 rabbit_setup = RabbitMQClient()
@@ -53,7 +37,7 @@ rabbit_setup.setup([
 ])
 rabbit_setup.close()
 
-metrics = Metrics(prefix="forest_build_snapshot_", port=METRICS_PORT)
+metrics = Metrics(port=METRICS_PORT)
 
 
 def epoch_to_date(epoch: int):
@@ -143,9 +127,9 @@ def build_snapshot(
         # Export snapshot via forest-cli
         with metrics.track_processing():
             os.makedirs(folder, exist_ok=True)
-            logger.debug(f"Running command: {args}")
+            logger.debug(f"Running command: {' '.join(args)} with FULLNODE_API_INFO='{get_api_info()}'")
             proc = subprocess.Popen(
-                args=args,
+                args=[' '.join(args)],
                 cwd=folder,
                 env={
                     "FULLNODE_API_INFO": get_api_info(),
@@ -154,12 +138,13 @@ def build_snapshot(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                shell=True
+                shell=True,
+                bufsize=1  # line-buffered
             )
+            for line in proc.stdout:
+                logger.debug(line.rstrip())
             return_code = proc.wait()
         if return_code != 0 or not os.path.exists(snapshot):
-            for line in proc.stdout:
-                logger.error(line.rstrip())
             logger.error(f"Snapshot {snapshot_type} {epoch} failed")
             metrics.inc_failure()
             slack_notify(f"Snapshot {snapshot_type} {epoch} failed", "failed")
@@ -277,8 +262,9 @@ def build_historic_snapshots():
             logger.debug(f"Lite historic epoch {lite_historic_epoch} is too old. Starting...")
             logger.info(f">>> Starting from epoch: {lite_historic_epoch + lite_depth} to {current_epoch}")
             for epoch in range(lite_historic_epoch + lite_depth, current_epoch, lite_depth):
-                logger.info(f"Waiting for epoch {epoch} compute...")
-                wait_for_epoch_compute(epoch)
+                if WAIT_FOR_COMPUTATION:
+                    logger.info(f"Waiting for epoch {epoch} compute...")
+                    wait_for_epoch_compute(epoch)
                 if not process_historic_epoch(epoch):
                     logger.warning(f"Lite epoch {epoch} failed. Restarting...")
                     time.sleep(QUEUE_WAIT_TIMEOUT)
@@ -288,8 +274,9 @@ def build_historic_snapshots():
             logger.debug(f"Diff historic epoch {diff_historic_epoch} is too old. Starting...")
             logger.info(f">>> Starting from epoch: {diff_historic_epoch + diff_depth} to {current_epoch}")
             for epoch in range(diff_historic_epoch + diff_depth, current_epoch, diff_depth):
-                logger.info(f"Waiting for epoch {epoch} compute...")
-                wait_for_epoch_compute(epoch)
+                if WAIT_FOR_COMPUTATION:
+                    logger.info(f"Waiting for epoch {epoch} compute...")
+                    wait_for_epoch_compute(epoch)
                 if not process_historic_epoch(epoch, diff=True):
                     logger.warning(f"Diff epoch {epoch} failed. Restarting...")
                     time.sleep(QUEUE_WAIT_TIMEOUT)
@@ -308,15 +295,31 @@ def build_latest_snapshots():
             _, previous_built_snapshot = rabbit.consume(RabbitQueue.SNAPSHOT_LATEST, latest=True)
         if previous_built_snapshot:
             previous_epoch = parse_epoch_from_snapshot_path(previous_built_snapshot)
-        if (epoch - previous_epoch) > 100:
+        if (epoch - previous_epoch) >= 2 * 60 * 60 / SECONDS_PER_EPOCH:  # more than 2 hours since last build
             logger.info(f"Processing epoch {epoch} on {CHAIN}")
+            # Build v2 snapshot
+            if CHAIN == "calibnet":
+                folder = f"{SNAPSHOT_PATH}/{SNAPSHOT_CONFIGS['latest']['folder']}-v2"
+                snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
+                build_snapshot(
+                    epoch=epoch,
+                    folder=folder,
+                    args=get_build_args(
+                        "latest-v2",
+                        SNAPSHOT_CONFIGS["latest"]["depth"],
+                        SNAPSHOT_CONFIGS["latest"]["state_roots"],
+                        epoch,
+                        snapshot
+                    )
+                )
+            # Build v1 snapshot
             folder = f"{SNAPSHOT_PATH}/{SNAPSHOT_CONFIGS['latest']['folder']}"
             snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
             build_snapshot(
                 epoch=epoch,
                 folder=folder,
                 args=get_build_args(
-                    "latest-v2" if SNAPSHOT_FORMAT == "v2" else "latest",
+                    "latest",
                     SNAPSHOT_CONFIGS["latest"]["depth"],
                     SNAPSHOT_CONFIGS["latest"]["state_roots"],
                     epoch,

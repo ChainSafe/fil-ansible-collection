@@ -1,7 +1,17 @@
 ---
 - name: Create rabbitmq directory
+  become: true
   ansible.builtin.file:
     path: "{{ rabbitmq.data_path }}"
     state: directory
-    owner: "{{ ansible_user }}"
+    owner: '999'
     mode: '0755'
+
+- name: Deploy rabbitmq plugins
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ rabbitmq.data_path }}/enabled_plugins"
+    owner: '999'
+    mode: '0755'
+    content: |
+      [rabbitmq_management,rabbitmq_prometheus,rabbitmq_shovel,rabbitmq_shovel_management].

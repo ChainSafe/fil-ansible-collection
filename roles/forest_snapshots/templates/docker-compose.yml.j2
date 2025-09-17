@@ -21,13 +21,16 @@ services:
     env_file: [ ".env" ]
     environment:
       FOREST_F3_SIDECAR_FFI_ENABLED: {{ '1' if forest.f3_enabled_sidecar else '0' }}
+    ports:
+      - "{{ forest.rpc.port }}:{{ forest.rpc.port }}"
+      - "{{ forest.metrics.port }}:{{ forest.metrics.port }}"
+      - "34000:34000"
     logging: *default-logging
     restart: always
     user: root
     volumes:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
-      - "{{ forest.host.snapshot_archive_path }}:{{ forest.container.snapshot_archive_path }}"
       - "{{ forest.host.config_path }}:{{ forest.container.config_path }}:ro"
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
     healthcheck:
@@ -58,11 +61,15 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
     logging: *default-logging
-    user: root
+    user: "999:999"     # UID:GID of the rabbitmq user inside the image
     restart: always
     volumes:
       - "{{ rabbitmq.data_path }}:/var/lib/rabbitmq" # Persist data
+      - "{{ rabbitmq.data_path }}/enabled_plugins:/etc/rabbitmq/enabled_plugins"
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
@@ -149,6 +156,7 @@ services:
     environment:
       DEFAULT_START_EPOCH: {{ forest.build_snapshots_historic.start_epoch }}
       BUILD_DELAY: {{ forest.build_snapshots_historic.delay }}
+      WAIT_FOR_COMPUTATION: "{{ forest.build_snapshots_historic.wait_for_computation }}"
     logging: *default-logging
     restart: on-failure:5
     user: root
@@ -241,6 +249,11 @@ services:
       - "grafana-alloy:/var/lib/alloy"
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "/var/lib/docker/containers:/var/lib/docker/containers:ro"
+      - "/var/run:/var/run:ro"
+      - "/sys:/sys:ro"
+      - "/dev/kmsg:/dev/kmsg:ro"
+    cap_add:
+      - SYSLOG
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -254,3 +267,4 @@ networks:
   default:
     name: forest-{{ forest.network }}-{{ forest.node_type }}
     driver: bridge
+    enable_ipv6: true

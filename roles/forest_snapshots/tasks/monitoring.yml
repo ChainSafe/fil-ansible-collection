@@ -12,5 +12,4 @@
     dest: "{{ grafana_alloy.config_path }}/config.alloy"
     owner: "{{ ansible_user }}"
     mode: '0640'
-  become: true
   notify: Restart grafana-alloy

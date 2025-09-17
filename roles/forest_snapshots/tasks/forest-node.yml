@@ -1,5 +1,6 @@
 ---
 - name: Ensure Forest node directories exist
+  become: true
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -11,11 +12,18 @@
     - "{{ forest.host.data_path }}"
 
 - name: Ensure forest token exists
-  ansible.builtin.file:
-    path: "{{ forest.host.data_path }}/token"
-    state: file
-    owner: "{{ ansible_user }}"
-    mode: '0600'
+  block:
+    - name: Create token
+      ansible.builtin.command:
+        cmd: "touch {{ forest.host.data_path }}/token"
+        creates: "{{ forest.host.data_path }}/token"
+
+    - name: Set token permissions
+      ansible.builtin.file:
+        path: "{{ forest.host.data_path }}/token"
+        state: file
+        owner: "{{ ansible_user }}"
+        mode: '0660'
 
 - name: Deploy forest entrypoint
   ansible.builtin.template:

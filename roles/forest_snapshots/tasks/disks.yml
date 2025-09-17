@@ -1,7 +1,7 @@
 ---
 - name: Configure disks
   block:
-    - name: Create RAID0 array from extra disks (each 22TB)
+    - name: Create RAID array from extra disks
       ansible.builtin.include_role:
         name: mrlesmithjr.mdadm
       vars:
@@ -12,3 +12,12 @@
             level: "{{ external_disk.raid_level }}"
             mountpoint: "{{ external_disk.mount_point }}"
             state: present
+            options: "{{ external_disk.mount_options }}"
+
+    - name: Grant permissions to the RAID array
+      ansible.builtin.file:
+        path: "{{ external_disk.mount_point }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+        state: directory

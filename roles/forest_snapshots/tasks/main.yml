@@ -1,5 +1,6 @@
 ---
 - name: Configure External Disks
+  become: true
   ansible.builtin.import_tasks: disks.yml
   when: external_disk.raid_devices | length > 0
 

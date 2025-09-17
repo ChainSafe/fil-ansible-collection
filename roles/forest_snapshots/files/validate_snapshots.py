@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 
-from forest_helpers import get_api_info
+from forest_helpers import get_api_info, SNAPSHOT_CONFIGS
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
@@ -18,7 +18,7 @@ METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
 
 # Config
 QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
-TIMEOUT_SECONDS = 40 * 60  # 40 minutes
+TIMEOUT_SECONDS = 60 * 60  # 1h
 metrics = None
 
 
@@ -52,16 +52,18 @@ def gather_archive_metadata(archive_metadata: list[str], archive_info: list[str]
     return json.dumps(data, indent=2)
 
 
-def upload_metadata(snapshot_path: str):
-    """Upload metadata to R2."""
-    result = {"success": False}
+def upload_sha256(snapshot_path: str):
+    """Upload sha256 to R2."""
     with open(snapshot_path, "rb") as f:
         snapshot_hash = hashlib.sha256(f.read()).hexdigest()
     snapshot_sha256 = f"{snapshot_path}.sha256sum"
     with open(snapshot_sha256, "w") as f:
         f.write(snapshot_hash)
-    r2_upload_artifact(snapshot_sha256)
+    return r2_upload_artifact(snapshot_sha256)
 
+
+def upload_metadata(snapshot_path: str):
+    """Upload metadata to R2."""
     try:
         archive_metadata = subprocess.run(
             ["/usr/local/bin/forest-tool", "archive", "metadata", snapshot_path],
@@ -84,48 +86,48 @@ def upload_metadata(snapshot_path: str):
         snapshot_metadata = f"{snapshot_path}.metadata.json"
         with open(snapshot_metadata, "w") as f:
             f.write(target_snapshot_metadata)
-        r2_upload_artifact(snapshot_metadata)
-        result["success"] = True
+        return r2_upload_artifact(snapshot_metadata)
 
     except subprocess.CalledProcessError as err:
         logger.error(f"Error fetching genesis timestamp: {err.stderr}", exc_info=True)
         raise
 
-    return result["success"]
-
 
 def forest_validate(snapshot_path: str) -> bool:
     """Validate a snapshot using Forest CLI."""
     try:
-        args = [
-            "/usr/local/bin/forest-tool", "snapshot", "validate",
-            "--check-network", CHAIN
-        ]
-        if CHAIN == "mainnet":
-            print(f"⚡ Running light checks on {snapshot_path} for {CHAIN}...")
-            args.extend([
-                "--check-links", "0",
-                "--check-stateroots", "5"
-            ])
-        else:
-            print(f"✅ Running full checks on {snapshot_path} for {CHAIN}...")
-            args.extend([
-                "--check-links", "2000",
-                "--check-stateroots", "10"
-            ])
-        args.append(snapshot_path)
-        subprocess.run(
-            args,
-            env={
-                "FULLNODE_API_INFO": get_api_info()
-            },
-            capture_output=True, text=True, check=True
-        )
+        upload_metadata(snapshot_path)
+        snapshot_type = os.path.basename(os.path.dirname(snapshot_path))
+        if snapshot_type in ["latest", "latest-v2", "lite"]:
+            args = [
+                "/usr/local/bin/forest-tool", "snapshot", "validate-diffs",
+                "--check-network", CHAIN
+            ]
+            if CHAIN == "mainnet":
+                print(f"⚡ Running light checks on {snapshot_path} for {CHAIN}...")
+                args.extend([
+                    "--check-links", "0",
+                    "--check-stateroots", "5"
+                ])
+            else:
+                print(f"✅ Running full checks on {snapshot_path} for {CHAIN}...")
+                args.extend([
+                    "--check-links", str(SNAPSHOT_CONFIGS["latest"]["depth"]),
+                    "--check-stateroots", str(SNAPSHOT_CONFIGS["latest"]["state_roots"])
+                ])
+            args.append(snapshot_path)
+            subprocess.run(
+                args,
+                env={
+                    "FULLNODE_API_INFO": get_api_info()
+                },
+                capture_output=True, text=True, check=True
+            )
     except subprocess.CalledProcessError as err:
         logger.error(f"❌ Error validating snapshot on forest: {err.stderr}", exc_info=True)
         return False
 
-    return upload_metadata(snapshot_path)
+    return upload_sha256(snapshot_path)
 
 
 def validate_snapshot(snapshot_path: str) -> bool:
@@ -193,5 +195,5 @@ def main():
 
 
 if __name__ == "__main__":
-    metrics = Metrics(prefix="forest_validate_snapshot_", port=METRICS_PORT)
+    metrics = Metrics(port=METRICS_PORT)
     main()

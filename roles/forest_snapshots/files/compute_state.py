@@ -25,7 +25,7 @@ rabbit_setup.setup([RabbitQueue.COMPUTE])
 rabbit_setup.close()
 
 # Initialize metrics
-metrics = Metrics(prefix="forest_compute_state_", port=METRICS_PORT)
+metrics = Metrics(port=METRICS_PORT)
 
 
 def compute_state(epoch: int, rabbit: RabbitMQClient):
@@ -103,7 +103,7 @@ def main():
         historic_start_epoch = (historic_start_epoch // COMPUTE_BATCH_SIZE) * COMPUTE_BATCH_SIZE
         epochs_left = current_epoch - historic_start_epoch
         metrics.set_total(epochs_left // COMPUTE_BATCH_SIZE)
-        if current_epoch - historic_start_epoch > 100:
+        if current_epoch - historic_start_epoch > COMPUTE_BATCH_SIZE:
             for epoch in range(historic_start_epoch, current_epoch, COMPUTE_BATCH_SIZE):
                 with RabbitMQClient() as rabbit:
                     try:

@@ -8,7 +8,6 @@
   loop:
     - "{{ forest.host.scripts_path }}"
     - "{{ forest.host.snapshot_path }}"
-    - "{{ forest.host.snapshot_archive_path }}"
 
 - name: Python packages
   ansible.builtin.copy:

@@ -8,6 +8,24 @@ from logger_setup import setup_logger
 
 logger = setup_logger(os.path.basename(__file__))
 
+SNAPSHOT_CONFIGS = {
+    "lite": {
+        "depth": 30000,
+        "state_roots": 900,
+        "folder": "lite",
+    },
+    "diff": {
+        "depth": 3000,
+        "state_roots": 3000,
+        "folder": "diff",
+    },
+    "latest": {
+        "depth": 2000,
+        "state_roots": 2000,
+        "folder": "latest",
+    },
+}
+
 
 def get_api_info() -> str:
     forest_ip = socket.gethostbyname(os.getenv("FOREST_HOST"))
@@ -113,7 +131,7 @@ def get_current_epoch() -> int:
     try:
         args = ["/usr/local/bin/forest-cli", "chain", "head", "--format", "json"]
         api_info = get_api_info()
-        logger.debug(f"Running command: {args} with FULLNODE_API_INFO='{api_info}'")
+        logger.debug(f"Running command: {' '.join(args)} with FULLNODE_API_INFO='{api_info}'")
         result = subprocess.run(
             args=args,
             env={

@@ -217,6 +217,8 @@ services:
     environment:
       FOREST_HOST: forest-{{ forest.network }}-{{ forest.node_type }}
       RABBITMQ_HOST: rabbitmq
+      FULL_RPC_NODE: {{ forest.validate_snapshots.rpc_node }}
+      BACKUP_RPC_NODE: {{ forest.validate_snapshots.backup_rpc_node }}
     logging: *default-logging
     restart: on-failure:5
     user: root
@@ -229,6 +231,7 @@ services:
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "metrics:{{ forest.container.metrics_path }}"
     healthcheck: *default-job-healthcheck
 

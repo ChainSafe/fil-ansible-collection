@@ -1,102 +1,124 @@
-import hashlib
-import json
 import os
 import subprocess
 import threading
 import time
+from typing import Any
+
+import docker
+import requests
 
 from forest_helpers import get_api_info, SNAPSHOT_CONFIGS
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
-from upload_snapshots import r2_upload_artifact
 
 logger = setup_logger(os.path.basename(__file__))
 
 CHAIN = os.getenv("CHAIN", "testnet")
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
-
+FULL_RPC_NODE = os.getenv("FULL_RPC_NODE", "http://127.0.0.1:1234/rpc/v0")
+BACKUP_RPC_NODE = os.getenv("BACKUP_RPC_NODE", "http://127.0.0.1:1234/rpc/v0")
 # Config
 QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
 TIMEOUT_SECONDS = 60 * 60  # 1h
 metrics = None
 
 
-def gather_archive_metadata(archive_metadata: list[str], archive_info: list[str]):
-    data = {}
-    current_key = None
-    for metadata in [archive_metadata, archive_info]:
-        for line in metadata:
-            if not line.strip():
-                continue  # skip empty lines
+def request_lotus_api(payload: dict[str, Any], endpoint: str = 'http://127.0.0.1:1234/rpc/v0'):
+    """Request Lotus API."""
+    response = requests.post(endpoint, json=payload, headers={'Content-Type': 'application/json'})
+    response.raise_for_status()
+    return response.json()
 
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-                if value:
-                    data[key] = value
-                    current_key = key
-                else:
-                    # Key with multiline value
-                    data[key] = []
-                    current_key = key
+def lotus_validate(snapshot_path: str) -> bool:
+    """Validate a snapshot using Lotus daemon."""
+    snapshot_type = os.path.basename(os.path.dirname(snapshot_path))
+    if snapshot_type in ["latest", "latest-v2"]:
+        try:
+            client = docker.from_env()
+            logger.info("Validating snapshot using lotus daemon")
+            lotus_daemon = client.containers.run(
+                name="lotus-validate",
+                image="filecoin/lotus-all-in-one:v1.34.1",
+                entrypoint="/bin/bash",
+                user="root",
+                command=f"lotus daemon --import-snapshot {snapshot_path}",
+                volumes={
+                    os.getenv("FOREST_HOST_SNAPSHOT_PATH"): {
+                        "bind": os.getenv("FOREST_CONTAINER_SNAPSHOT_PATH"),
+                        "mode": "rw"
+                    }
+                },
+                detach=True,
+                network=os.getenv("FOREST_HOST"),
+                tty=False,
+                remove=True
+            )
+
+            for chunk in lotus_daemon.exec_run("lotus wait-api --timeout 30m", stream=True):
+                logger.debug(chunk.decode().rstrip())
+            for chunk in lotus_daemon.exec_run("timeout 6h lotus sync-wait", stream=True):
+                logger.debug(chunk.decode().rstrip())
+            lotus_info = lotus_daemon.exec_run("lotus info").output.decode()
+            if 'Chain: [sync ok]' in lotus_info:
+                logger.info('✅ Chain is in sync.')
             else:
-                # Continuation line (multiline value)
-                if current_key:
-                    if isinstance(data[current_key], list):
-                        data[current_key].append(line.strip())
-                    else:
-                        # Convert to list if already has a single value
-                        data[current_key] = [data[current_key], line.strip()]
-    return json.dumps(data, indent=2)
+                logger.error('✅ Chain is in sync.')
+                return False
 
+            node_height = request_lotus_api(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "Filecoin.ChainHead",
+                    "params": [],
+                    "id": 1
+                }
+            )['result']['Height']
+            test_height = int(node_height) - 1950
+            logger.info(f"🔗 Test Block Height: {test_height}")
 
-def upload_sha256(snapshot_path: str):
-    """Upload sha256 to R2."""
-    with open(snapshot_path, "rb") as f:
-        snapshot_hash = hashlib.sha256(f.read()).hexdigest()
-    snapshot_sha256 = f"{snapshot_path}.sha256sum"
-    with open(snapshot_sha256, "w") as f:
-        f.write(snapshot_hash)
-    return r2_upload_artifact(snapshot_sha256)
+            test_cid_req = request_lotus_api({
+                "jsonrpc": "2.0",
+                "method": "Filecoin.ChainGetTipSetByHeight",
+                "params": [test_height, None],
+                "id": 1
+            }, FULL_RPC_NODE)
+            if test_cid_req['result'] is None:
+                logger.warning("❗ Failed to retrieve CID from FULLNODE_ENDPOINT. Trying GILFNODE_ENDPOINT...")
+                test_cid_req = request_lotus_api({
+                    "jsonrpc": "2.0",
+                    "method": "Filecoin.ChainGetTipSetByHeight",
+                    "params": [test_height, None],
+                    "id": 1
+                }, BACKUP_RPC_NODE)
+            if test_cid_req['result'] is None or test_cid_req['result']['Cids'][0] is None:
+                logger.error("Failed to retrieve CID from both FULLNODE_ENDPOINT and GILFNODE_ENDPOINT.")
+                return False
+            test_cid = test_cid_req['result']['Cids'][0]['/']
+            logger.debug("Query ChainGetBlock with the extracted CID")
+            block_height_cid = request_lotus_api(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "Filecoin.ChainGetBlock",
+                    "params": [{"/": test_cid}],
+                    "id": 1
+                }
+            )['result']['Height']
+            if block_height_cid is None:
+                logger.error(f"Failed to retrieve block height for cid: {test_cid}.")
+                return False
 
+            logger.info(f"Block Height from ChainGetBlock: {test_height}")
+            logger.info("🛠️ Snapshot validation has finished")
+        except Exception as err:
+            logger.error(f"❌ Error validating snapshot on lotus: {err}", exc_info=True)
+            return False
 
-def upload_metadata(snapshot_path: str):
-    """Upload metadata to R2."""
-    try:
-        archive_metadata = subprocess.run(
-            ["/usr/local/bin/forest-tool", "archive", "metadata", snapshot_path],
-            env={
-                "FULLNODE_API_INFO": get_api_info()
-            },
-            capture_output=True, text=True, check=True
-        )
-        archive_info = subprocess.run(
-            ["/usr/local/bin/forest-tool", "archive", "info", snapshot_path],
-            env={
-                "FULLNODE_API_INFO": get_api_info()
-            },
-            capture_output=True, text=True, check=True
-        )
-        target_snapshot_metadata = gather_archive_metadata(
-            archive_metadata.stdout.splitlines(),
-            archive_info.stdout.splitlines()
-        )
-        snapshot_metadata = f"{snapshot_path}.metadata.json"
-        with open(snapshot_metadata, "w") as f:
-            f.write(target_snapshot_metadata)
-        return r2_upload_artifact(snapshot_metadata)
-
-    except subprocess.CalledProcessError as err:
-        logger.error(f"Error fetching genesis timestamp: {err.stderr}", exc_info=True)
-        raise
-
+    return True
 
 def forest_validate(snapshot_path: str) -> bool:
     """Validate a snapshot using Forest CLI."""
     try:
-        upload_metadata(snapshot_path)
         snapshot_type = os.path.basename(os.path.dirname(snapshot_path))
         if snapshot_type in ["latest", "latest-v2", "lite"]:
             args = [
@@ -127,16 +149,18 @@ def forest_validate(snapshot_path: str) -> bool:
         logger.error(f"❌ Error validating snapshot on forest: {err.stderr}", exc_info=True)
         return False
 
-    return upload_sha256(snapshot_path)
+    return True
 
 
 def validate_snapshot(snapshot_path: str) -> bool:
     """Wrapper around upload that also produces RabbitMQ status messages."""
-    result = {"success": False}
     with metrics.track_processing():
-        result["success"] = forest_validate(snapshot_path)
+        if not forest_validate(snapshot_path):
+            return False
+        # if not lotus_validate(snapshot_path):
+        #     return False
 
-    return result["success"]
+    return True
 
 
 # noinspection DuplicatedCode

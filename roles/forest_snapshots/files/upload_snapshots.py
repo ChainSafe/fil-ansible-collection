@@ -1,5 +1,7 @@
 import hashlib
+import json
 import os
+import subprocess
 import threading
 import time
 
@@ -10,6 +12,7 @@ from botocore.exceptions import ClientError
 from logger_setup import setup_logger
 from metrics import Metrics
 from rabbitmq import RabbitMQClient, RabbitQueue
+from roles.forest_snapshots.files.forest_helpers import get_api_info
 
 logger = setup_logger(os.path.basename(__file__))
 
@@ -47,6 +50,85 @@ s3 = boto3.client(
 )
 KB = 1024
 MB = KB * KB
+
+
+def gather_archive_metadata(archive_metadata: list[str], archive_info: list[str]):
+    data = {}
+    current_key = None
+    for metadata in [archive_metadata, archive_info]:
+        for line in metadata:
+            if not line.strip():
+                continue  # skip empty lines
+
+            if ":" in line:
+                key, value = line.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                if value:
+                    data[key] = value
+                    current_key = key
+                else:
+                    # Key with multiline value
+                    data[key] = []
+                    current_key = key
+            else:
+                # Continuation line (multiline value)
+                if current_key:
+                    if isinstance(data[current_key], list):
+                        data[current_key].append(line.strip())
+                    else:
+                        # Convert to list if already has a single value
+                        data[current_key] = [data[current_key], line.strip()]
+    return data
+
+
+def upload_sha256(snapshot_path: str) -> str:
+    """Upload sha256 to R2."""
+    with open(snapshot_path, "rb") as f:
+        snapshot_hash = hashlib.sha256(f.read()).hexdigest()
+    snapshot_sha256 = f"{snapshot_path}.sha256sum"
+    with open(snapshot_sha256, "w") as f:
+        f.write(snapshot_hash)
+    r2_upload_artifact(snapshot_sha256)
+    return snapshot_hash
+
+
+def upload_metadata(snapshot_path: str, snapshot_hash: str):
+    """Upload metadata to R2."""
+    try:
+        archive_metadata = subprocess.run(
+            ["/usr/local/bin/forest-tool", "archive", "metadata", snapshot_path],
+            env={
+                "FULLNODE_API_INFO": get_api_info()
+            },
+            capture_output=True, text=True, check=True
+        )
+        archive_info = subprocess.run(
+            ["/usr/local/bin/forest-tool", "archive", "info", snapshot_path],
+            env={
+                "FULLNODE_API_INFO": get_api_info()
+            },
+            capture_output=True, text=True, check=True
+        )
+        target_snapshot_metadata = gather_archive_metadata(
+            archive_metadata.stdout.splitlines(),
+            archive_info.stdout.splitlines()
+        )
+        target_snapshot_metadata["sha256sum"] = snapshot_hash
+        target_snapshot_metadata["forest_validation"] = {
+            "success": False,
+        }
+        target_snapshot_metadata["lotus_validation"] = {
+            "success": False,
+        }
+        snapshot_metadata = f"{snapshot_path}.metadata.json"
+        with open(snapshot_metadata, "w") as f:
+            f.write(json.dumps(target_snapshot_metadata, indent=2))
+        return r2_upload_artifact(snapshot_metadata)
+
+    except subprocess.CalledProcessError as err:
+        logger.error(f"Error fetching genesis timestamp: {err.stderr}", exc_info=True)
+        raise
 
 
 def r2_upload_artifact(file_path: str) -> bool:
@@ -88,20 +170,12 @@ def r2_upload_artifact(file_path: str) -> bool:
         return False
 
 
-def sha256sum(file_path):
-    sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            sha256.update(chunk)
-    return sha256.hexdigest()
-
-
 def upload_snapshot(snapshot_path: str) -> bool:
     """Wrapper around upload that also produces RabbitMQ status messages."""
-    result = {"success": False}
     with metrics.track_upload():
-        result["success"] = r2_upload_artifact(snapshot_path)
-    return result["success"]
+        snapshot_hash = upload_sha256(snapshot_path)
+        upload_metadata(snapshot_path, snapshot_hash)
+        return r2_upload_artifact(snapshot_path)
 
 
 def process_snapshot(delivery_tag: int, snapshot_path: str, rabbit: RabbitMQClient = None):

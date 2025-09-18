@@ -100,6 +100,8 @@ forest:
   validate_snapshots:
     # Enable validator service to verify produced snapshots.
     enabled: false
+    rpc_node: https://rpcnode.chainsafe-fil.io
+    backup_rpc_node: https://api.node.glif.io
   rpc:
     # Enable RPC service.
     enabled: true

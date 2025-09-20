@@ -1,0 +1,4 @@
+---
+- name: Restart Faucet Nginx
+  ansible.builtin.command: docker restart nginx-{{ container_name_fountain }}
+  changed_when: true

@@ -43,7 +43,8 @@ repos:
     rev: v0.45.0
     hooks:
       - id: markdownlint
-        args: ['--fix']
+        args:
+          - '--fix'
 
   - repo: https://github.com/JangasCodingplace/commit-prefix-pre-commit
     rev: v0.0.3-beta

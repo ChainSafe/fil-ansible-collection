@@ -1,0 +1,21 @@
+---
+fountain:
+  image:
+    name: filecoin/lotus-all-in-one
+    tag: stable-calibnet
+  host:
+    data_dir: /data/lotus_data
+    nginx_conf_dir: /home/{{ ansible_user }}/nginx-fountain/
+  container:
+    data_dir: /var/lib/lotus
+
+  pub_address: ''
+  fountain_amount: 100
+  data_cap: 1048576
+
+  recaptcha_secret_key:
+  recaptcha_site_key:
+  faucet:
+    port: 7777
+  nginx:
+    port: 80

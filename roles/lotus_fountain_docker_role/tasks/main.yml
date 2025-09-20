@@ -1,0 +1,67 @@
+---
+- name: Deploy and start lotus fountain container
+  community.docker.docker_container:
+    name: "lotus-fountain"
+    state: started
+    image: "{{ fountain.image.name }}:{{ fountain.image.tag }}"
+    image_name_mismatch: recreate
+    pull: true
+    stop_timeout: 20
+    command: >
+      lotus-fountain run \
+        --front '0.0.0.0:{{ fountain.faucet.port }}' \
+        --from {{ fountain.pub_address }} \
+        --amount {{ fountain.fountain_amount }} \
+        --data-cap {{ fountain.data_cap }}
+    restart_policy: always
+    network_mode: host
+    volumes:
+      - "{{ fountain.host.data_dir }}:{{ fountain.container.data_dir }}"
+    env:
+      LOTUS_PATH: "{{ fountain.container.data_dir }}"
+      RECAPTCHA_SECRET_KEY: "{{ fountain.recaptcha_secret_key }}"
+      RECAPTCHA_SITE_KEY: "{{ fountain.recaptcha_site_key }}"
+    log_driver: json-file
+    log_options:
+      max-file: "5"
+      max-size: 100m
+    detach: true
+    labels:
+      promtail_logging: "true"
+      scrape_location: "faucet"
+      instance: "{{ inventory_hostname }}"
+      network: "{{ hostvars[inventory_hostname]['network'] }}"
+
+- name: Create nginx directory
+  ansible.builtin.file:
+    path: "{{ fountain.host.nginx_conf_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy Nginx configuration template
+  ansible.builtin.template:
+    src: templates/nginx-faucet.conf.j2
+    dest: "{{ fountain.host.nginx_conf_dir }}/nginx.conf"
+    mode: "0755"
+  notify:
+    - Restart Faucet Nginx
+
+- name: Run Nginx container
+  community.docker.docker_container:
+    name: "nginx-fountain"
+    image: nginx
+    volumes:
+      - "{{ fountain.host.nginx_conf_dir }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+    network_mode: host
+    detach: true
+  notify:
+    - Restart Faucet Nginx
+
+- name: Noncefix cronjob
+  ansible.builtin.cron:
+    name: Run Docker command every 15 minutes
+    minute: "*/15"
+    job: >
+      /bin/bash -c '
+        docker exec lotus-fountain \
+          lotus-shed noncefix --auto --addr {{ fountain.pub_address }} >> {{ fountain.host.data_dir }}/noncefix.log 2>&1'

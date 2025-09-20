@@ -24,7 +24,6 @@
     - "{{ lotus.host.parent_cache }}"
     - "{{ lotus.host.parameter_cache }}"
     - "{{ lotus.host.config_path }}"
-    - "{{ lotus.host.keystore_path }}"
     - "{{ lotus.host.script_path }}"
     - "{{ lotus.host.logs_path }}"
   tags:
@@ -43,7 +42,6 @@
     - "{{ lotus.host.parent_cache }}"
     - "{{ lotus.host.parameter_cache }}"
     - "{{ lotus.host.config_path }}"
-    - "{{ lotus.host.keystore_path }}"
     - "{{ lotus.host.script_path }}"
     - "{{ lotus.host.logs_path }}"
 
@@ -97,8 +95,8 @@
 
 - name: Template Run lotus-fullnode script
   ansible.builtin.template:
-    src: "templates/run-lotus-full-node.sh.j2"
-    dest: "{{ lotus.host.script_path }}/run-lotus-full-node.sh"
+    src: "templates/run-lotus.sh.j2"
+    dest: "{{ lotus.host.script_path }}/run-lotus.sh"
     owner: "{{ lotus.user }}"
     group: "{{ lotus.group }}"
     mode: "0700"
@@ -106,25 +104,28 @@
 
 - name: Start lotus node container
   community.docker.docker_container:
-    name: "{{ lotus_container_name }}"
+    name: "lotus-{{ lotus.network }}-{{ lotus.node_type }}"
     state: started
-    image: "{{ filecoin_dockerhub_imagename }}:{{ filecoin_dockerhub_tag }}"
+    image: "{{ lotus.image.name }}:{{ lotus.image.tag }}"
     image_name_mismatch: recreate
     pull: true
     env:
-      LOTUS_BACKUP_BASE_PATH: "{{ lotus_path }}"
-      LOTUS_DISABLE_PRE_MIGRATIONS: "{{ '1' if lotus_nodetype == 'archive' else omit }}"
-      FIL_PROOFS_PARAMETER_CACHE: "{{ docker_parameter_cache_location }}"
-      FIL_PROOFS_PARENT_CACHE: "{{ docker_parent_cache_volume }}"
+      LOTUS_BACKUP_BASE_PATH: "{{ lotus.container.data_dir }}"
+      FIL_PROOFS_PARAMETER_CACHE: "{{ lotus.container.parameter_cache }}"
+      FIL_PROOFS_PARENT_CACHE: "{{ lotus.container.parent_cache }}"
     stop_timeout: 20
     # TODO add genesis file if necessary --genesis="{{ lotus_path }}/genesis.car"
-    command: "{{ lotus_docker_command }}"
+    command: >
+      {{ lotus.container.script_path }}/run-lotus.sh \
+        >   {{ lotus.container.logs_path }}/lotus.log \
+        2>  {{ lotus.container.logs_path }}/lotus.err
     volumes:
       - "{{ lotus.host.data_dir }}:{{ lotus.container.data_dir }}"
       - "{{ lotus.host.parent_cache }}:{{ lotus.container.parent_cache }}"
       - "{{ lotus.host.parameter_cache }}:{{ lotus.container.parameter_cache }}"
       - "{{ lotus.host.config_path }}/config.toml:{{ lotus.container.config_path }}/config.toml"
       - "{{ lotus.host.script_path }}:{{ lotus.container.script_path }}"
+      - "{{ lotus.host.logs_path }}:{{ lotus.container.logs_path }}"
     restart_policy: always
     network_mode: host
     log_driver: json-file
@@ -136,11 +137,11 @@
       scrape_location: "lotus"
       instance: "{{ inventory_hostname }}"
       network: "{{ hostvars[inventory_hostname]['lotus']['network'] }}"
-  register: lotus_docker_start
+  register: lotus_docker
 
 - name: Wait for Lotus node to finish syncing
   community.docker.docker_container_exec:
-    container: "{{ lotus_docker_start.container.Id }}"
+    container: "{{ lotus_docker.container.Id }}"
     command: lotus sync wait
     timeout: 300
   register: lotus_sync

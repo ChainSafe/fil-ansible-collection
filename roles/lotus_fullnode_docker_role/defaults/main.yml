@@ -24,18 +24,13 @@ lotus:
     parameter_cache: "/data/parameter_cache"
     config_path: "/home/{{ ansible_user }}/lotus/config"
     script_path: "/home/{{ ansible_user }}/lotus/script"
-
-    keystore_path: "/home/{{ ansible_user }}/lotus/keystore"
     logs_path: "/home/{{ ansible_user }}/lotus/logs"
-
   container:
     data_dir: "/var/lib/lotus"
     parent_cache: "/home/lotus/parent_cache"
     parameter_cache: "/home/lotus/parameter_cache"
     config_path: "/home/lotus/config"
     script_path: "/home/lotus/script"
-
-    keystore_path: "/home/lotus/keystore"
     logs_path: "/home/lotus/logs"
   rpc:
     port: 1234

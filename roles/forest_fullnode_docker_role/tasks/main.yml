@@ -72,6 +72,13 @@
     pull: true
     stop_timeout: 20
     entrypoint: /bin/bash
+    healthcheck:
+      test: [ "CMD", "forest-cli", "sync", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
     # TODO add a genesis file if necessary --genesis="{{ forest_path }}/genesis.car"
     # TODO garbage collector var --env "FOREST_GC_TRIGGER_FACTOR=1.4" (should be added at issue resolution https://github.com/ChainSafe/forest/issues/3863)
     command: "{{ forest.container.scripts_path }}/forest.sh > /var/log/forest.log 2>/var/log/forest.err"

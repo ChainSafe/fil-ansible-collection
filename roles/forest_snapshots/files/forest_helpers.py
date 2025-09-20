@@ -35,6 +35,7 @@ def get_api_info() -> str:
     rpc_api_info = f"{forest_token}:/ip4/{forest_ip}/tcp/{forest_rpc_port}/http"
     while True:
         try:
+            logger.debug(f"Waiting for API: /ip4/{forest_ip}/tcp/{forest_rpc_port}/http")
             result = subprocess.run(
                 ["/usr/local/bin/forest-cli", "wait-api"],
                 env={
@@ -130,12 +131,10 @@ def get_current_epoch() -> int:
     logger.debug("Fetch current epoch")
     try:
         args = ["/usr/local/bin/forest-cli", "chain", "head", "--format", "json"]
-        api_info = get_api_info()
-        logger.debug(f"Running command: {' '.join(args)} with FULLNODE_API_INFO='{api_info}'")
         result = subprocess.run(
             args=args,
             env={
-                "FULLNODE_API_INFO": api_info
+                "FULLNODE_API_INFO": get_api_info()
             },
             capture_output=True,
             text=True,

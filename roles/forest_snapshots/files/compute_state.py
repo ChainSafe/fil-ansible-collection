@@ -30,7 +30,7 @@ metrics = Metrics(port=METRICS_PORT)
 
 def compute_state(epoch: int, rabbit: RabbitMQClient):
     """Compute state for a given epoch."""
-    logger.info(f"Computing state for epochs {epoch} - {epoch + COMPUTE_BATCH_SIZE}")
+    logger.info(f"⏳Computing state for epochs {epoch} - {epoch + COMPUTE_BATCH_SIZE}")
     start = time.time()
     try:
         with metrics.track_processing():
@@ -51,7 +51,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             return_code = proc.wait()
         if return_code != 0:
             logger.error(
-                f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} failed, retrying with per/epoch computation...")
+                f"❌Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} failed, retrying with per/epoch computation...")
             with metrics.track_processing():
                 for epoch_manual in range(epoch-COMPUTE_BATCH_SIZE, epoch + COMPUTE_BATCH_SIZE+1):
                     proc = subprocess.Popen(
@@ -78,14 +78,14 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             if progress > 0:
                 time_estimate = secs_to_dhms(int(time_taken / metrics.get_progress()))
                 logger.info(
-                    f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\n" +
+                    f"✅Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\n" +
                     f"Took time: {secs_to_dhms(time_taken)}.\n" +
                     f"Time left: {time_estimate}"
                 )
             rabbit.produce(RabbitQueue.COMPUTE, str(epoch + COMPUTE_BATCH_SIZE))
     except Exception as e:
         metrics.inc_failure()
-        logger.error(f"Error running command: {e}")
+        logger.error(f"❌ Error running command: {e}")
         raise
 
 
@@ -96,7 +96,7 @@ def main():
         with RabbitMQClient() as rabbit:
             delivery_tag, computed_epoch = rabbit.consume(RabbitQueue.COMPUTE, latest=True)
         if not delivery_tag:
-            logger.warning("No processed epochs in queue. Starting over...")
+            logger.warning("️⚠️No processed epochs in queue. Starting over...")
         else:
             historic_start_epoch = int(computed_epoch)
 
@@ -109,12 +109,12 @@ def main():
                     try:
                         compute_state(epoch, rabbit)
                     except Exception as e:
-                        logger.error(f"Error computing state on epoch {epoch}: {e}.  Sleeping for 10 minutes...")
+                        logger.error(f"🚧Error computing state on epoch {epoch}: {e}.  Sleeping for 10 minutes...")
                         time.sleep(600)
                         break
                 time.sleep(10)
         else:
-            logger.info("Epochs compute finished. Sleeping for 1h...")
+            logger.info("⏱ Epochs compute finished. Sleeping for 1h...")
             time.sleep(60 * 60)
             continue
 

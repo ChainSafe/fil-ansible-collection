@@ -24,7 +24,7 @@ services:
     ports:
       - "{{ forest.rpc.port }}:{{ forest.rpc.port }}"
       - "{{ forest.metrics.port }}:{{ forest.metrics.port }}"
-      - "34000:34000"
+      - "{{ forest.libp2p.port }}:{{ forest.libp2p.port }}"
     logging: *default-logging
     restart: always
     user: root
@@ -52,6 +52,35 @@ services:
       env: "prod"
       container_role: "forest"
       instance: "{{ inventory_hostname }}"
+
+  lotus:
+    image: {{ lotus.image.name }}:{{ lotus.image.tag }}
+    hostname: lotus
+    container_name: lotus-{{ forest.network }}-{{ forest.node_type }}
+    entrypoint: /bin/bash
+    command: ["-c", "sleep infinity" ]
+    ports:
+      - "{{ lotus.rpc.port }}:{{ lotus.rpc.port }}"
+    logging: *default-logging
+    restart: always
+    user: root
+    environment:
+      LOTUS_PATH: "/home/lotus/data/"
+      LOTUS_API_LISTENADDRESS: "/ip4/0.0.0.0/tcp/{{ lotus.rpc.port }}"
+      LOTUS_API_REMOTELISTENADDRESS: "0.0.0.0:{{ lotus.rpc.port }}"
+      FIL_PROOFS_PARAMETER_CACHE: "/home/lotus/parameter-cache"
+      FIL_PROOFS_PARENT_CACHE: "/home/lotus/parent-cache"
+    volumes:
+      - "{{ lotus.host.data_path }}:{{ lotus.container.data_path }}"
+      - "{{ lotus.host.parameter_cache }}:{{ lotus.container.parameter_cache }}"
+      - "{{ lotus.host.parent_cache }}:{{ lotus.container.parent_cache }}"
+      - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+    labels:
+      project: "fil-archive-snapshots"
+      env: "prod"
+      container_role: "lotus"
+      instance: "{{ inventory_hostname }}"
+
   rabbitmq:
     image: rabbitmq:3-management
     hostname: rabbitmq
@@ -82,20 +111,20 @@ services:
       instance: "{{ inventory_hostname }}"
 
   compute-state:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    image: {{ forest.jobs.image.name }}:{{ forest.jobs.image.tag }}
     container_name: compute-state-{{ forest.network }}
     hostname: compute-state
     depends_on:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ 1 if forest.compute.enabled else 0 }}
+      replicas: {{ 1 if forest.jobs.compute.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/compute_state.py" ]
     env_file: [ ".env" ]
     environment:
-      DEFAULT_START_EPOCH: {{ forest.compute.start_epoch }}
-      COMPUTE_BATCH_SIZE: {{ forest.compute.batch_size }}
+      DEFAULT_START_EPOCH: {{ forest.jobs.compute.start_epoch }}
+      COMPUTE_BATCH_SIZE: {{ forest.jobs.compute.batch_size }}
     logging: *default-logging
     restart: on-failure:5
     user: root
@@ -111,20 +140,20 @@ services:
     healthcheck: *default-job-healthcheck
 
   build-snapshots-latest:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    image: {{ forest.jobs.image.name }}:{{ forest.jobs.image.tag }}
     container_name: build-snapshots-latest-{{ forest.network }}
     hostname: build-snapshots-latest
     depends_on:
       - rabbitmq
       - forest
     deploy:
-      replicas: {{ 1 if forest.build_snapshots_latest.enabled else 0 }}
+      replicas: {{ 1 if forest.jobs.build_snapshots_latest.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/build_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
       BUILD_LATEST_SNAPSHOTS: "true"
-      BUILD_DELAY: {{ forest.build_snapshots_latest.delay }}
+      BUILD_DELAY: {{ forest.jobs.build_snapshots_latest.delay }}
     logging: *default-logging
     restart: on-failure:5
     user: root
@@ -141,7 +170,7 @@ services:
     healthcheck: *default-job-healthcheck
 
   build-snapshots-historic:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    image: {{ forest.jobs.image.name }}:{{ forest.jobs.image.tag }}
     container_name: build-snapshots-historic-{{ forest.network }}
     hostname: build-snapshots-historic
     depends_on:
@@ -149,14 +178,14 @@ services:
       - forest
       - compute-state
     deploy:
-      replicas: {{ 1 if forest.build_snapshots_historic.enabled else 0 }}
+      replicas: {{ 1 if forest.jobs.build_snapshots_historic.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/build_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
-      DEFAULT_START_EPOCH: {{ forest.build_snapshots_historic.start_epoch }}
-      BUILD_DELAY: {{ forest.build_snapshots_historic.delay }}
-      WAIT_FOR_COMPUTATION: "{{ forest.build_snapshots_historic.wait_for_computation }}"
+      DEFAULT_START_EPOCH: {{ forest.jobs.build_snapshots_historic.start_epoch }}
+      BUILD_DELAY: {{ forest.jobs.build_snapshots_historic.delay }}
+      WAIT_FOR_COMPUTATION: "{{ forest.jobs.build_snapshots_historic.wait_for_computation }}"
     logging: *default-logging
     restart: on-failure:5
     user: root
@@ -173,7 +202,7 @@ services:
     healthcheck: *default-job-healthcheck
 
   upload-snapshots:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    image: {{ forest.jobs.image.name }}:{{ forest.jobs.image.tag }}
     container_name: upload-snapshots-{{ forest.network }}
     hostname: upload-snapshots
     depends_on:
@@ -182,7 +211,7 @@ services:
       - build-snapshots-historic
       - build-snapshots-latest
     deploy:
-      replicas: {{ 1 if forest.upload_snapshots.enabled else 0 }}
+      replicas: {{ 1 if forest.jobs.upload_snapshots.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/upload_snapshots.py" ]
     env_file: [ ".env" ]
@@ -202,7 +231,7 @@ services:
     healthcheck: *default-job-healthcheck
 
   validate-snapshots:
-    image: {{ forest.image.name }}:{{ forest.image.tag }}
+    image: {{ forest.jobs.image.name }}:{{ forest.jobs.image.tag }}
     container_name: validate-snapshots-{{ forest.network }}
     hostname: validate-snapshots
     depends_on:
@@ -210,17 +239,20 @@ services:
       - forest
       - upload-snapshots
     deploy:
-      replicas: {{ 1 if forest.validate_snapshots.enabled else 0 }}
+      replicas: {{ 1 if forest.jobs.validate_snapshots.enabled else 0 }}
     entrypoint: python3
     command: [ "/scripts/validate_snapshots.py" ]
     env_file: [ ".env" ]
     environment:
-      FOREST_HOST: forest-{{ forest.network }}-{{ forest.node_type }}
+      LOTUS_HOST: "lotus-{{ forest.network }}-{{ forest.node_type }}"
+      FOREST_VERSION: "{{ forest.image.tag }}"
+      LOTUS_VERSION: "{{ lotus.image.tag }}"
+      LOTUS_RPC_PORT: "{{ lotus.rpc.port }}"
       RABBITMQ_HOST: rabbitmq
-      FULL_RPC_NODE: {{ forest.validate_snapshots.rpc_node }}
-      BACKUP_RPC_NODE: {{ forest.validate_snapshots.backup_rpc_node }}
+      FULL_RPC_NODE: "{{ forest.jobs.validate_snapshots.rpc_node }}"
+      BACKUP_RPC_NODE: "{{ forest.jobs.validate_snapshots.backup_rpc_node }}"
     logging: *default-logging
-    restart: on-failure:5
+    restart: always
     user: root
     labels:
       project: "fil-archive-snapshots"

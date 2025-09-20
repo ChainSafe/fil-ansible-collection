@@ -11,6 +11,18 @@
     - "{{ forest.host.config_path }}"
     - "{{ forest.host.data_path }}"
 
+- name: Ensure Lotus node directories exist
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: '0755'
+  loop:
+    - "{{ lotus.host.data_path }}"
+    - "{{ lotus.host.parameter_cache }}"
+    - "{{ lotus.host.parent_cache }}"
+
 - name: Ensure forest token exists
   block:
     - name: Create token
@@ -23,7 +35,7 @@
         path: "{{ forest.host.data_path }}/token"
         state: file
         owner: "{{ ansible_user }}"
-        mode: '0660'
+        mode: '0600'
 
 - name: Deploy forest entrypoint
   ansible.builtin.template:

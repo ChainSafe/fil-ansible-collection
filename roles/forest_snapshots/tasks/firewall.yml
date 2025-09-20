@@ -1,0 +1,20 @@
+---
+- name: Allow SSH access
+  community.general.ufw:
+    rule: limit
+    port: ssh
+    proto: tcp
+
+- name: Set default outgoing policy to allow
+  community.general.ufw:
+    policy: allow
+    direction: outgoing
+
+- name: Set default incoming policy to deny
+  community.general.ufw:
+    policy: deny
+    direction: incoming
+
+- name: Enable firewall
+  community.general.ufw:
+    state: enabled

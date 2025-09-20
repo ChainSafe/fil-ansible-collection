@@ -1,4 +1,4 @@
-## Role: forest_snapshots
+# Role: forest_snapshots
 
 Provision a Forest archive node and a snapshot pipeline using Docker Compose. This role can build historic and latest snapshots, validate them, upload to object storage (e.g., Cloudflare R2/S3), publish metrics/logs, and optionally run compute-state jobs. It also wires up RabbitMQ for job coordination and Grafana Alloy for metrics/logs shipping.
 
@@ -6,7 +6,8 @@ This role is part of the `chainsafe.filecoin` collection.
 
 ---
 
-### Components
+## Components
+
 - Forest archive node container
 - Optional jobs:
   - compute-state
@@ -16,7 +17,8 @@ This role is part of the `chainsafe.filecoin` collection.
 - RabbitMQ (optional, enabled by default)
 - Grafana Alloy for metrics/logs (optional, enabled by default)
 
-### Requirements
+## Requirements
+
 - Linux host with Docker and Docker Compose v2
 - Sufficient disk throughput and space for archive data and snapshots
 - Ansible collections:
@@ -26,7 +28,8 @@ This role is part of the `chainsafe.filecoin` collection.
 
 Ensure Docker is installed (e.g., via `chainsafe.filecoin.install_packages`).
 
-### Default Variables
+## Default Variables
+
 Defined in `defaults/main.yml` (excerpt):
 
 ```yaml
@@ -101,40 +104,47 @@ forest:
     snapshot_path: "/home/forest/snapshots"
     # Metrics/logs path inside container.
     metrics_path: "/data/metrics"
-  compute:
-    # Enable compute-state job service.
-    enabled: false
-    # Starting epoch for compute-state.
-    start_epoch: 0
-    # Batch size for compute-state processing.
-    batch_size: 100
-  build_snapshots_historic:
-    # Enable historic snapshots builder.
-    enabled: false
-    # Starting epoch for historic snapshot generation.
-    start_epoch: 0
-    # Delay between historic snapshot runs in seconds.
-    delay: "{{ 24 * 60 * 60 }}"
-  build_snapshots_latest:
-    # Enable periodic latest snapshot builder.
-    enabled: false
-    # Snapshot format/version for latest snapshots.
-    format: "v1"
-    # Delay between latest snapshot runs in seconds.
-    delay: "{{ 6 * 60 * 60 }}"
-  upload_snapshots:
-    # Enable uploader service to push snapshots to object storage.
-    enabled: false
-  validate_snapshots:
-    # Enable validator service to verify produced snapshots.
-    enabled: false
   metrics:
     # Metrics port exposed by Forest.
     port: 6116
-  # Whether to import a provided libp2p private key.
-  import_libp2p_private_key: false
-  # The libp2p private key material (handle securely).
-  libp2p_private_key: ""
+  libp2p:
+    # Lib P2P swarm port
+    port: 34000
+    # The libp2p private key material (handle securely).
+    private_key: ""
+  jobs:
+    image:
+      # Container image repository for job execution.
+      name: ghcr.io/chainsafe/infra-docker/fil-snapshots-archive
+      # Container image tag.
+      tag: v0.3.0
+    compute:
+      # Enable compute-state job service.
+      enabled: false
+      # Starting epoch for compute-state.
+      start_epoch: 0
+      # Batch size for compute-state processing.
+      batch_size: 100
+    build_snapshots_historic:
+      # Enable historic snapshots builder.
+      enabled: false
+      # Starting epoch for historic snapshot generation.
+      start_epoch: 0
+      # Delay between historic snapshot runs in seconds.
+      delay: "{{ 24 * 60 * 60 }}"
+    build_snapshots_latest:
+      # Enable periodic latest snapshot builder.
+      enabled: false
+      # Snapshot format/version for latest snapshots.
+      format: "v1"
+      # Delay between latest snapshot runs in seconds.
+      delay: "{{ 6 * 60 * 60 }}"
+    upload_snapshots:
+      # Enable uploader service to push snapshots to object storage.
+      enabled: false
+    validate_snapshots:
+      # Enable validator service to verify produced snapshots.
+      enabled: false
 
 # RabbitMQ
 rabbitmq:
@@ -178,16 +188,19 @@ slack:
 
 Sensitive variables (R2 keys, Grafana credentials, Slack token) should be set via Ansible Vault or environment.
 
-### Templates, Files and Compose
+## Templates, Files and Compose
+
 - Compose and env templates: `templates/docker-compose.yml.j2`, `templates/env.j2`
 - Forest config and scripts: `templates/forest/*`
-- Jobs artifacts: `files/*.py`, `templates/jobs/validate-snapshots.sh.j2`
+- Jobs artifacts: `files/*.py`
 - Monitoring config: `templates/monitoring/config.alloy.j2`
 
 Compose `project_path` is `{{ docker_compose.project_path }}`; services are enabled/disabled via the `forest.*`/`rabbitmq.*`/`grafana_alloy.*` toggles above.
 
-### Tasks Overview
+## Tasks Overview
+
 Role tasks are organized as:
+
 - `disks.yml`: Prepare and mount external disk (optional RAID) at `external_disk.mount_point`
 - `forest-node.yml`: Configure Forest archive node directories, config, filter list, scripts
 - `compose.yml`: Render compose files and bring up services
@@ -196,11 +209,14 @@ Role tasks are organized as:
 - `rabbitmq.yml`: Deploy RabbitMQ (if enabled)
 - `main.yml`: Orchestrates the above
 
-### Handlers
+## Handlers
+
 Handlers restart components via Compose V2:
+
 - `Restart forest`, `Restart compute-state`, `Restart build-snapshots`, `Restart validate-snapshots`, `Restart upload-snapshots`, `Restart grafana-alloy`, and `Restart all`.
 
-### Usage
+## Usage
+
 Example playbook enabling latest snapshots building and uploads to R2:
 
 ```yaml
@@ -212,14 +228,15 @@ Example playbook enabling latest snapshots building and uploads to R2:
     forest:
       node_type: archive
       network: calibnet
-      build_snapshots_latest:
-        enabled: true
-        format: v1
-        delay: "{{ 6 * 60 * 60 }}"
-      upload_snapshots:
-        enabled: true
-      validate_snapshots:
-        enabled: true
+      jobs:
+        build_snapshots_latest:
+          enabled: true
+          format: v1
+          delay: "{{ 6 * 60 * 60 }}"
+        upload_snapshots:
+          enabled: true
+        validate_snapshots:
+          enabled: true
     r2:
       endpoint_url: "https://<account-id>.r2.cloudflarestorage.com"
       bucket_name: forest-archive
@@ -252,20 +269,24 @@ vars:
       delay: "{{ 24 * 60 * 60 }}"
 ```
 
-### Operational Notes
+## Operational Notes
+
 - Ensure adequate IOPS and throughput on `external_disk.mount_point` for archive and snapshots.
 - Forest container typically runs with `--no-gc` for snapshot-producing nodes.
 - RabbitMQ is recommended when running multiple jobs/pipelines.
 - Set `forest.target_peer_count` and logging levels to match environment needs.
 
-### Troubleshooting
+## Troubleshooting
+
 - Snapshots not uploaded: verify `r2.*` credentials and bucket permissions.
 - Jobs not starting: check Compose service status and logs; ensure `enabled: true` for the specific job.
 - Metrics/logs missing: confirm Grafana Alloy credentials and endpoints; check network egress.
 - Disk full: monitor `forest.container.metrics_path` and snapshot output paths.
 
-### License
+## License
+
 See `LICENSE.md` at the collection root.
 
-### Author
+## Author
+
 ChainSafe Systems

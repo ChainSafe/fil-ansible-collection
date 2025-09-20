@@ -8,8 +8,7 @@ r2:
   secret_access_key: ""
   # Bucket name where snapshots are stored.
   archive_bucket_name: "forest-archive"
-  latest_bucket_name: "infra-team-filecoin-archive"
-  latest_v2_bucket_name: "forest-snapshots-v2"
+  latest_bucket_name: "forest-snapshots-v2"
 
 # External Disk / Filesystem
 external_disk:
@@ -30,6 +29,21 @@ docker_compose:
   # Path where Compose files and state are placed.
   project_path: "/home/{{ ansible_user }}/forest-{{ forest.network }}-{{ forest.node_type }}"
 
+# Lotus configuration
+lotus:
+  image:
+    name: filecoin/lotus-all-in-one
+    tag: v1.34.1
+  host:
+    data_path: "/data/lotus/data"
+    parameter_cache: "/data/lotus/parameter-cache"
+    parent_cache: "/data/lotus/parent-cache"
+  container:
+    data_path: "/home/lotus/data"
+    parameter_cache: "/home/lotus/parameter-cache"
+    parent_cache: "/home/lotus/parent-cache"
+  rpc:
+    port: 1234
 # Forest configuration
 forest:
   image:
@@ -73,35 +87,39 @@ forest:
     # Archival snapshot output path inside container.
     # Metrics/logs path inside container.
     metrics_path: "/data/metrics"
-  compute:
-    # Enable compute-state job service.
-    enabled: false
-    # Starting epoch for compute-state.
-    start_epoch: 0
-    # Batch size for compute-state processing.
-    batch_size: 100
-  build_snapshots_historic:
-    # Enable historic snapshots builder.
-    enabled: false
-    # If true, wait for compute-state to finish before starting snapshot generation.
-    wait_for_computation: true
-    # Starting epoch for historic snapshot generation.
-    start_epoch: 0
-    # Delay between historic snapshot runs in seconds.
-    delay: "{{ 24 * 60 * 60 }}"
-  build_snapshots_latest:
-    # Enable periodic latest snapshot builder.
-    enabled: false
-    # Delay between latest snapshot runs in seconds.
-    delay: "{{ 2 * 60 * 60 }}"
-  upload_snapshots:
-    # Enable uploader service to push snapshots to object storage.
-    enabled: false
-  validate_snapshots:
-    # Enable validator service to verify produced snapshots.
-    enabled: false
-    rpc_node: https://rpcnode.chainsafe-fil.io
-    backup_rpc_node: https://api.node.glif.io
+  jobs:
+    image:
+      name: ghcr.io/chainsafe/infra-docker/fil-snapshots-archive
+      tag: v0.2.8
+    compute:
+      # Enable compute-state job service.
+      enabled: false
+      # Starting epoch for compute-state.
+      start_epoch: 0
+      # Batch size for compute-state processing.
+      batch_size: 100
+    build_snapshots_historic:
+      # Enable historic snapshots builder.
+      enabled: false
+      # If true, wait for compute-state to finish before starting snapshot generation.
+      wait_for_computation: true
+      # Starting epoch for historic snapshot generation.
+      start_epoch: 0
+      # Delay between historic snapshot runs in seconds.
+      delay: "{{ 24 * 60 * 60 }}"
+    build_snapshots_latest:
+      # Enable periodic latest snapshot builder.
+      enabled: false
+      # Delay between latest snapshot runs in seconds.
+      delay: "{{ 2 * 60 * 60 }}"
+    upload_snapshots:
+      # Enable uploader service to push snapshots to object storage.
+      enabled: false
+    validate_snapshots:
+      # Enable validator service to verify produced snapshots.
+      enabled: false
+      rpc_node: https://rpcnode.chainsafe-fil.io
+      backup_rpc_node: https://api.node.glif.io
   rpc:
     # Enable RPC service.
     enabled: true
@@ -116,11 +134,9 @@ forest:
     port: 6116
     # Metrics port on host.
     host_port: 36116
-
-  # Whether to import a provided libp2p private key.
-  import_libp2p_private_key: false
-  # The libp2p private key material (handle securely).
-  libp2p_private_key: ""
+  libp2p:
+    port: 34000
+    private_key: ""
 
 # RabbitMQ
 rabbitmq:

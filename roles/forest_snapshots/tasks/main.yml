@@ -4,6 +4,9 @@
   ansible.builtin.import_tasks: disks.yml
   when: external_disk.raid_devices | length > 0
 
+# - name: Configure Firewall
+#  ansible.builtin.import_tasks: firewall.yml
+
 - name: Configure Forest Node
   ansible.builtin.import_tasks: forest-node.yml
 

@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-forest_libp2p_path=/home/forest/forest_data/libp2p
+if [[ "{{ forest.libp2p.private_key }}" != "" ]]; then
+    forest_libp2p_path="{{ forest.container.data_path }}/libp2p"
 
-if [[ "{{ forest.import_libp2p_private_key | lower }}" = "true" ]]; then
     mkdir -p "${forest_libp2p_path}"
     chmod 0750 "${forest_libp2p_path}"
     forest-tool shed key-pair-from-private-key \
       --output "${forest_libp2p_path}/keypair" \
-      "{{ forest.libp2p_private_key }}"
+      "{{ forest.libp2p.private_key }}"
 fi
 
 forest \

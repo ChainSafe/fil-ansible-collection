@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+# This script sets up a Lotus node by importing necessary keys and configurations.
+# It creates the required directories, imports wallet, Libp2p and Api token keys if specified,
+# and starts the Lotus full node daemon with specified settings.
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Placeholder for the actual variable injection
+readonly wallet_private_key="{{ lotus.wallet.private_key }}"
+readonly import_wallet_keyinfo="{{ lotus.wallet.import }}"
+readonly lotus_path="{{ lotus.container.data_dir }}"
+readonly lotus_import_jwt="{{ lotus.jwt.import }}"
+readonly lotus_jwt_keyinfo="{{ lotus.jwt.keyinfo }}"
+readonly lotus_jwt_token="{{ lotus.jwt.token }}"
+readonly libp2p_private_key="{{ lotus.libp2p.private_key }}"
+readonly lotus_import_peerkey="{{ lotus.peerkey.import }}"
+
+readonly lotus_snapshots_path="/tmp/snapshot.forest.car.zst"
+readonly lotus_keystore_path="${lotus_path}/keystore"
+
+
+# Ensure dpkg is not in an interrupted state
+dpkg --configure -a
+
+# Function to import keys
+import_key() {
+    local keyname="$1"
+    local keyvalue="$2"
+
+    echo "Importing ${keyname}..."
+    echo "$keyvalue" > "${lotus_keystore_path}/${keyname}.keyinfo"
+    chmod 0600 "${lotus_keystore_path}/${keyname}.keyinfo"
+
+    if lotus-shed keyinfo import "${lotus_keystore_path}/${keyname}.keyinfo" > /tmp/import_output.txt 2>&1; then
+        echo "${keyname} is set."
+        rm -f "${lotus_keystore_path}/${keyname}.keyinfo"
+    else
+        import_result=$(cat /tmp/import_output.txt)
+        if echo "$import_result" | grep "key already exists"; then
+            echo "Key ${keyname} already exists. Removing imported key file."
+            rm -f "${lotus_keystore_path}/${keyname}.keyinfo"
+        else
+            echo "Error: Failed to import ${keyname}."
+            exit 1
+        fi
+    fi
+}
+
+# Create lotus keystore directory if it doesn't exist
+mkdir -p "$lotus_keystore_path"
+chmod 0700 "$lotus_path"
+
+# Parse the wallet_private_key string and import keys
+if [[ "$import_wallet_keyinfo" = "True" || "$import_wallet_keyinfo" = "true" ]]; then
+    # Remove leading and trailing characters and split the string
+    cleaned_keys=$(echo $wallet_private_key | sed -e 's/\[\|\]//g' -e 's/\\//g' -e "s/'//g")
+
+    # Split the cleaned string into an array
+    IFS=',' read -r -a wallet_keys <<< "$cleaned_keys"
+
+    for key in "${wallet_keys[@]}"; do
+        # Trim whitespace and process each key
+        trimmed_key=$(echo "$key" | xargs)
+        echo "Importing key: $trimmed_key"
+        import_key "wallet" "$trimmed_key"
+    done
+fi
+
+# Import libp2p peer key
+if [[ "$lotus_import_peerkey" = "True" || "$lotus_import_peerkey" = "true" ]]; then
+    import_key "Libp2p" "$libp2p_private_key"
+fi
+
+# Importing auth-jwt-private
+if [ "$lotus_import_jwt" = "True" || "$lotus_import_jwt" = "true"  ]; then
+    echo "Importing auth-jwt-private..."
+
+    if [ -n "$lotus_jwt_keyinfo" ]; then
+        lotus_jwt_keyinfo_decoded=$(lotus-shed base16 -decode "$lotus_jwt_keyinfo")
+
+        echo "$lotus_jwt_keyinfo_decoded" > "$lotus_path"/keystore/MF2XI2BNNJ3XILLQOJUXMYLUMU
+        chmod 0600 "$lotus_path"/keystore/MF2XI2BNNJ3XILLQOJUXMYLUMU
+    else
+        echo "Error: lotus_jwt_keyinfo is not set."
+        exit 1
+    fi
+
+    if [ -n "$lotus_jwt_token" ]; then
+        echo "$lotus_jwt_token" > "${lotus_path}/token"
+        chmod 0600 "${lotus_path}/token"
+    else
+        echo "Error: lotus_jwt_token is not set."
+        exit 1
+    fi
+fi
+
+# This script checks if the Lotus chain node is already initialized by searching for a specific file flag(False).
+# If the node is initialized (`fresh_sync` is set to "False"), it starts the node normally to avoid unnecessary re-initialization and snapshot downloads.
+# If it is the first run, or the node is not yet initialized (`fresh_sync` is not "False"), the script will:
+# - Update the system package list and install necessary tools (e.g., aria2 for downloading the blockchain snapshot).
+# - Attempt to download the Forest snapshot up to 5 times to handle intermittent errors from the source (e.g., HTTP 500 errors).
+# - Import the downloaded snapshot and start the Lotus daemon with specified bootstrap and profile settings for optimal operation.
+{% if 'fresh_sync' in ansible_run_tags %}
+apt update
+apt install aria2 -y
+rm -f "${lotus_snapshots_path}"
+# Retry logic, because CF occassionally returns 500 (not 503) errors.
+for i in {1..5}; do
+    aria2c -x5 "https://forest-archive.chainsafe.dev/latest/{{ lotus.network }}/" -o "${lotus_snapshots_path}" && break || sleep 15
+done
+lotus daemon --import-snapshot "${lotus_snapshots_path}" --remove-existing-chain true
+{% else %}
+echo "Lotus chain already initialized."
+lotus daemon
+{% endif %}

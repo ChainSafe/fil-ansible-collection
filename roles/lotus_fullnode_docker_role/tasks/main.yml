@@ -1,0 +1,151 @@
+---
+- name: Gracefully Stop the lotus Docker Container
+  community.docker.docker_container:
+    name: "{{ lotus_container_name }}"
+    state: absent
+  tags:
+    - never
+    - fresh_sync
+
+- name: Remove unused Docker volumes
+  community.docker.docker_prune:
+    volumes: true
+  tags:
+    - never
+    - fresh_sync
+
+- name: Delete data and config dir
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+    mode: "0755"
+  with_items:
+    - "{{ lotus.host.data_dir }}"
+    - "{{ lotus.host.parent_cache }}"
+    - "{{ lotus.host.parameter_cache }}"
+    - "{{ lotus.host.config_path }}"
+    - "{{ lotus.host.keystore_path }}"
+    - "{{ lotus.host.script_path }}"
+    - "{{ lotus.host.logs_path }}"
+  tags:
+    - never
+    - fresh_sync
+
+- name: Create config and data dir
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ lotus_user }}"
+    group: "{{ lotus_group }}"
+    mode: "0700"
+  with_items:
+    - "{{ lotus.host.data_dir }}"
+    - "{{ lotus.host.parent_cache }}"
+    - "{{ lotus.host.parameter_cache }}"
+    - "{{ lotus.host.config_path }}"
+    - "{{ lotus.host.keystore_path }}"
+    - "{{ lotus.host.script_path }}"
+    - "{{ lotus.host.logs_path }}"
+
+- name: Adjust net.core settings
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+    sysctl_set: true
+  loop:
+    - { name: "net.core.rmem_max", value: "2500000" }
+    - { name: "net.core.wmem_max", value: "2500000" }
+    - { name: "net.core.rmem_default", value: "2500000" }
+
+
+- name: Template lotus full node config file
+  ansible.builtin.template:
+    src: "templates/config.toml.j2"
+    dest: "{{ lotus.host.config_path }}/config.toml"
+    mode: "0700"
+
+- name: Modify permissions to match user-group inside docker image
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ lotus.user }}"
+    group: "{{ lotus.group }}"
+    # recurse: true
+    mode: "0700"
+  with_items:
+    - "{{ lotus.host.data_dir }}"
+    - "{{ lotus.host.parent_cache_volume }}"
+    - "{{ lotus.host.parameter_cache_location }}"
+    - "{{ lotus.host.config_path }}"
+
+- name: Ensure NTP,aria2 and zstd is Installed
+  ansible.builtin.apt:
+    name:
+      - ntp
+      - aria2
+      - zstd
+    state: present
+  become: true
+
+- name: Ensure NTP is running
+  ansible.builtin.service:
+    name: ntp
+    state: started
+    enabled: true
+
+- name: Template Run lotus-fullnode script
+  ansible.builtin.template:
+    src: "templates/run-lotus-full-node.sh.j2"
+    dest: "{{ lotus.host.script_path }}/run-lotus-full-node.sh"
+    owner: "{{ lotus.user }}"
+    group: "{{ lotus.group }}"
+    mode: "0700"
+  # no_log: true
+
+- name: Start lotus node container
+  community.docker.docker_container:
+    name: "{{ lotus_container_name }}"
+    state: started
+    image: "{{ filecoin_dockerhub_imagename }}:{{ filecoin_dockerhub_tag }}"
+    image_name_mismatch: recreate
+    pull: true
+    env:
+      LOTUS_BACKUP_BASE_PATH: "{{ lotus_path }}"
+      LOTUS_DISABLE_PRE_MIGRATIONS: "{{ '1' if lotus_nodetype == 'archive' else omit }}"
+      FIL_PROOFS_PARAMETER_CACHE: "{{ docker_parameter_cache_location }}"
+      FIL_PROOFS_PARENT_CACHE: "{{ docker_parent_cache_volume }}"
+    stop_timeout: 20
+    # TODO add genesis file if necessary --genesis="{{ lotus_path }}/genesis.car"
+    command: "{{ lotus_docker_command }}"
+    volumes:
+      - "{{ lotus.host.data_dir }}:{{ lotus.container.data_dir }}"
+      - "{{ lotus.host.parent_cache }}:{{ lotus.container.parent_cache }}"
+      - "{{ lotus.host.parameter_cache }}:{{ lotus.container.parameter_cache }}"
+      - "{{ lotus.host.config_path }}/config.toml:{{ lotus.container.config_path }}/config.toml"
+      - "{{ lotus.host.script_path }}:{{ lotus.container.script_path }}"
+    restart_policy: always
+    network_mode: host
+    log_driver: json-file
+    log_options:
+      max-file: "5"
+      max-size: 100m
+    labels:
+      promtail_logging: "true"
+      scrape_location: "lotus"
+      instance: "{{ inventory_hostname }}"
+      network: "{{ hostvars[inventory_hostname]['lotus']['network'] }}"
+  register: lotus_docker_start
+
+- name: Wait for Lotus node to finish syncing
+  community.docker.docker_container_exec:
+    container: "{{ lotus_docker_start.container.Id }}"
+    command: lotus sync wait
+    timeout: 300
+  register: lotus_sync
+  retries: 30
+  delay: 10
+  until: lotus_sync.rc == 0
+  when: not ansible_check_mode
+  changed_when: false

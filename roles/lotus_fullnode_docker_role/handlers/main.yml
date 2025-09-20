@@ -1,0 +1,5 @@
+---
+- name: Restart lotus
+  community.docker.docker_container:
+    name: "lotus-{{ lotus.network }}-{{ lotus.node_type }}"
+    restart: true

@@ -1,0 +1,114 @@
+[API]
+  # Binding address for the Lotus API
+  #
+  # type: string
+  # env var: LOTUS_API_LISTENADDRESS
+  ListenAddress = "/ip4/0.0.0.0/tcp/{{ lotus.rpc.port }}/http"
+
+  # type: string
+  # env var: LOTUS_API_REMOTELISTENADDRESS
+  RemoteListenAddress = "0.0.0.0:{{ lotus.rpc.port }}"
+
+  # type: Duration
+  # env var: LOTUS_API_TIMEOUT
+  #Timeout = "30s"
+
+
+[Logging]
+  [Logging.SubsystemLevels]
+    # env var: LOTUS_LOGGING_SUBSYSTEMLEVELS_EXAMPLE-SUBSYSTEM
+    #example-subsystem = "INFO"
+
+[Fevm]
+  # EnableEthRPC enables eth_ rpc, and enables storing a mapping of eth transaction hashes to filecoin message Cids.
+  # This will also enable the RealTimeFilterAPI and HistoricFilterAPI by default, but they can be disabled by config options above.
+  #
+  # type: bool
+  # env var: LOTUS_FEVM_ENABLEETHRPC
+  EnableEthRPC = {{ lotus.config.fevm_enable_eth_rpc }}
+
+[ChainIndexer]
+  # EnableIndexer controls whether the chain indexer is active.
+  # The chain indexer is responsible for indexing tipsets, messages, and events from the chain state.
+  # It is a crucial component for optimizing Lotus RPC response times.
+  #
+  # Default: false (indexer is disabled)
+  #
+  # Setting this to true will enable the indexer, which will significantly improve RPC performance.
+  # It is strongly recommended to keep this set to true if you are an RPC provider.
+  #
+  # If EnableEthRPC or EnableActorEventsAPI are set to true, the ChainIndexer must be enabled using
+  # this option to avoid errors at startup.
+  #
+  # type: bool
+  # env var: LOTUS_CHAININDEXER_ENABLEINDEXER
+  EnableIndexer =  {{ lotus.config.chain_indexer_enable_indexer  }}
+
+[Libp2p]
+  # Binding address for the libp2p host - 0 means random port.
+  # Format: multiaddress; see https://multiformats.io/multiaddr/
+
+  ListenAddresses = ["/ip4/0.0.0.0/tcp/{{ lotus.libp2p.port }}", "/ip6/::/tcp/{{ lotus.libp2p.port }}"]
+
+  # ConnMgrLow is the number of connections that the basic connection manager
+  # will trim down to.
+  #
+  # type: uint
+  # env var: LOTUS_LIBP2P_CONNMGRLOW
+  ConnMgrLow = {{ lotus.daemon_conn_mgr.low }}
+
+  # ConnMgrHigh is the number of connections that, when exceeded, will trigger
+  # a connection GC operation. Note: protected/recently formed connections don't
+  # count towards this limit.
+  #
+  # type: uint
+  # env var: LOTUS_LIBP2P_CONNMGRHIGH
+  ConnMgrHigh = {{ lotus.daemon_conn_mgr.high }}
+
+  ConnMgrGrace = "5m0s"
+
+[Pubsub]
+    Bootstrapper = true
+    IPColocationWhitelist = ["10.0.0.0/8"]
+
+[Chainstore]
+  # type: bool
+  # env var: LOTUS_CHAINSTORE_ENABLESPLITSTORE
+  EnableSplitstore = {{ lotus.config.enable_split_store }}
+
+  [Chainstore.Splitstore]
+    # ColdStoreType specifies the type of the coldstore.
+    # It can be "discard" (default) for discarding cold blocks, "messages" to store only messages or "universal" to store all chain state..
+    #
+    # type: string
+    # env var: LOTUS_CHAINSTORE_SPLITSTORE_COLDSTORETYPE
+    ColdStoreType = "{{ lotus.config.chain_store_split_store_cold_store_type }}"
+
+    # HotStoreType specifies the type of the hotstore.
+    # Only currently supported value is "badger".
+    #
+    # type: string
+    # env var: LOTUS_CHAINSTORE_SPLITSTORE_HOTSTORETYPE
+    #HotStoreType = "badger"
+
+    # MarkSetType specifies the type of the markset.
+    # It can be "map" for in memory marking or "badger" (default) for on-disk marking.
+    #
+    # type: string
+    # env var: LOTUS_CHAINSTORE_SPLITSTORE_MARKSETTYPE
+    #MarkSetType = "badger"
+
+    # HotStoreMessageRetention specifies the retention policy for messages, in finalities beyond
+    # the compaction boundary; default is 0.
+    #
+    # type: uint64
+    # env var: LOTUS_CHAINSTORE_SPLITSTORE_HOTSTOREMESSAGERETENTION
+    #HotStoreMessageRetention = 0
+
+    # HotStoreFullGCFrequency specifies how often to perform a full (moving) GC on the hotstore.
+    # A value of 0 disables, while a value 1 will do full GC in every compaction.
+    # Default is 20 (about once a week).
+    #
+    # type: uint64
+    # env var: LOTUS_CHAINSTORE_SPLITSTORE_HOTSTOREFULLGCFREQUENCY
+    HotStoreFullGCFrequency = {{ lotus.config.chain_store_split_store_hot_store_full_gc_frequency }}

@@ -1,0 +1,56 @@
+---
+lotus:
+  image:
+    name: filecoin/lotus-all-in-one
+    tag: stable-calibnet
+  node_type: full
+  network: "calibnet"
+
+  # Customization flags
+  config:
+    enable_split_store: true
+    fevm_enable_eth_rpc: false
+    chain_indexer_enable_indexer: false
+    chain_store_split_store_cold_store_type: discard
+    chain_store_split_store_hot_store_full_gc_frequency: 20
+
+  env: {}
+  user: "{{ ansible_user }}"
+  group: "{{ ansible_user }}"
+  user_id: "532"
+  host:
+    data_dir: "/data/lotus_data"
+    parent_cache: "/data/parent_cache"
+    parameter_cache: "/data/parameter_cache"
+    config_path: "/home/{{ ansible_user }}/lotus/config"
+    script_path: "/home/{{ ansible_user }}/lotus/script"
+
+    keystore_path: "/home/{{ ansible_user }}/lotus/keystore"
+    logs_path: "/home/{{ ansible_user }}/lotus/logs"
+
+  container:
+    data_dir: "/var/lib/lotus"
+    parent_cache: "/home/lotus/parent_cache"
+    parameter_cache: "/home/lotus/parameter_cache"
+    config_path: "/home/lotus/config"
+    script_path: "/home/lotus/script"
+
+    keystore_path: "/home/lotus/keystore"
+    logs_path: "/home/lotus/logs"
+  rpc:
+    port: 1234
+  libp2p:
+    port: 1347
+    private_key: "!Secret"
+  jwt:
+    import: false
+    keyinfo: "!Secret"
+    token: "!Secret"
+  wallet:
+    import: false
+    private_key: "!Secret"
+  peerkey:
+    import: false
+  daemon_conn_mgr:
+    low: 1024
+    high: 2048

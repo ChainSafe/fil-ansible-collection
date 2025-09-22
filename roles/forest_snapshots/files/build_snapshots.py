@@ -22,6 +22,7 @@ WAIT_FOR_COMPUTATION = os.getenv("WAIT_FOR_COMPUTATION", "true").lower() in {"1"
 DEFAULT_START_EPOCH = int(os.getenv("DEFAULT_START_EPOCH", "0"))
 METRICS_PORT = int(os.getenv("METRICS_PORT", "6116"))
 SNAPSHOT_PATH = os.getenv("SNAPSHOT_PATH", "/data/snapshots")
+SNAPSHOT_ARCHIVE_PATH = os.getenv("SNAPSHOT_ARCHIVE_PATH", "/data/snapshots-archive")
 
 # Config
 QUEUE_WAIT_TIMEOUT = 10 * 60  # 10 minutes
@@ -69,8 +70,7 @@ def gather_archive_metadata(snapshot_path: str):
                 "FULLNODE_API_INFO": get_api_info()
             },
             capture_output=True,
-            text=True,
-            check=True
+            text=True
         ).stdout.splitlines()
         archive_info = subprocess.run(
             ["/usr/local/bin/forest-tool", "archive", "info", snapshot_path],
@@ -159,13 +159,15 @@ def build_snapshot(
     snapshot_type = os.path.basename(folder)
     snapshot = f"{folder}/forest_{'diff' if diff else 'snapshot'}_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}{'+3000' if diff else ''}.forest.car.zst"
     logger.info(f"💾Creating {snapshot_type} Snapshot: {snapshot}")
-    build_ts = slack_notify(f"Creating {snapshot_type} Snapshot: {snapshot}", "info")
 
     start_time = time.time()
 
     return_code = None
+    if os.path.exists(snapshot):
+        return snapshot, True
     while True:
         try:
+            build_ts = slack_notify(f"Creating {snapshot_type} Snapshot: {snapshot}", "info")
             # Export snapshot via forest-cli
             with metrics.track_processing():
                 os.makedirs(folder, exist_ok=True)
@@ -220,21 +222,21 @@ def build_snapshot(
                 logger.debug(f"🔗 Snapshot metadata: {metadata}")
 
                 with RabbitMQClient() as rabbit:
-                    slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success", build_ts)
                     if snapshot_type in ["latest-v1", "latest-v2"]:
                         rabbit.produce(RabbitQueue.SNAPSHOT_LATEST, metadata.to_json())
                     elif snapshot_type == "lite":
                         rabbit.produce(RabbitQueue.SNAPSHOT, metadata.to_json())
                     elif snapshot_type == "diff":
                         rabbit.produce(RabbitQueue.SNAPSHOT_DIFF, metadata.to_json())
+                slack_notify(f"Build snapshot {snapshot_type} {epoch} succeeded", "success", build_ts)
                 return snapshot, True
         except Exception as e:
             metrics.inc_failure()
-            logger.error(f"❌Error running command: {e}", )
+            logger.error(f"❌Error running command: {e}", exc_info=True)
             return '', False
         except BaseException as e:
             metrics.inc_failure()
-            logger.error(f"❌Error running command: {e}")
+            logger.error(f"❌Error running command: {e}", exc_info=True)
             return '', False
 
 
@@ -255,7 +257,7 @@ def process_historic_epoch(epoch: int, diff: bool = False) -> bool:
     if diff:
         # Diff snapshots
         snapshot_config = SNAPSHOT_CONFIGS["diff"]
-        folder = f"{SNAPSHOT_PATH}/{snapshot_config['folder']}"
+        folder = f"{SNAPSHOT_ARCHIVE_PATH}/{snapshot_config['folder']}"
         snapshot = f"{folder}/forest_diff_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}+{snapshot_config['depth']}.forest.car.zst"
         _, success = build_snapshot(
             epoch,
@@ -275,7 +277,7 @@ def process_historic_epoch(epoch: int, diff: bool = False) -> bool:
     else:
         # Lite snapshot
         snapshot_config = SNAPSHOT_CONFIGS["lite"]
-        folder = f"{SNAPSHOT_PATH}/{snapshot_config['folder']}"
+        folder = f"{SNAPSHOT_ARCHIVE_PATH}/{snapshot_config['folder']}"
         snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
         _, success = build_snapshot(
             epoch,
@@ -308,6 +310,7 @@ def get_historic_epoch(queue: RabbitQueue):
 def build_historic_snapshots():
     """Build historic snapshots for each epoch in the past."""
     while True:
+        restart = False
         current_epoch = get_current_epoch()
         logger.info(f"⏳Starting from current epoch: {current_epoch}")
 
@@ -331,6 +334,7 @@ def build_historic_snapshots():
                 if not process_historic_epoch(epoch):
                     logger.warning(f"⚠️Lite epoch {epoch} failed. Restarting...")
                     time.sleep(QUEUE_WAIT_TIMEOUT)
+                    restart = True
                     break
 
         if current_epoch - diff_historic_epoch > SNAPSHOT_CONFIGS["diff"]["depth"]:
@@ -342,10 +346,12 @@ def build_historic_snapshots():
                 if not process_historic_epoch(epoch, diff=True):
                     logger.warning(f"⚠️Diff epoch {epoch} failed. Restarting...")
                     time.sleep(QUEUE_WAIT_TIMEOUT)
+                    restart = True
                     break
 
-        logger.warning("💤 Not enough epochs left to build historic snapshots. Sleeping for 24h...")
-        time.sleep(24 * 60 * 60)
+        if not restart:
+            logger.warning("💤 Not enough epochs left to build historic snapshots. Sleeping for 24h...")
+            time.sleep(24 * 60 * 60)
 
 
 def build_latest_snapshots():
@@ -367,20 +373,6 @@ def build_latest_snapshots():
                 folder=folder,
                 args=get_build_args(
                     "latest-v2",
-                    SNAPSHOT_CONFIGS["latest"]["depth"],
-                    SNAPSHOT_CONFIGS["latest"]["state_roots"],
-                    epoch,
-                    snapshot
-                )
-            )
-            # Build v1 snapshot
-            folder = f"{SNAPSHOT_PATH}/{SNAPSHOT_CONFIGS['latest']['folder']}-v1"
-            snapshot = f"{folder}/forest_snapshot_{CHAIN}_{epoch_to_date(epoch)}_height_{epoch}.forest.car.zst"
-            build_snapshot(
-                epoch=epoch,
-                folder=folder,
-                args=get_build_args(
-                    "latest-v1",
                     SNAPSHOT_CONFIGS["latest"]["depth"],
                     SNAPSHOT_CONFIGS["latest"]["state_roots"],
                     epoch,

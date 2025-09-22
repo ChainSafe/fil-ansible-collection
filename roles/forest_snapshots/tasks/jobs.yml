@@ -8,13 +8,25 @@
   loop:
     - "{{ forest.host.scripts_path }}"
     - "{{ forest.host.snapshot_path }}"
+    - "{{ forest.host.snapshot_archive }}"
 
 - name: Python packages
   ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "{{ forest.host.scripts_path }}/"
+    src: "{{ item.src }}"
+    dest: "{{ forest.host.scripts_path }}/{{ item.src }}"
     owner: "{{ ansible_user }}"
     mode: '0755'
-  loop: "{{ lookup('fileglob', '*.py', wantlist=True) }}"
+  loop:
+    - { src: "build_snapshots.py", notify: "Restart build-snapshots" }
+    - { src: "compute_state.py", notify: "Restart compute-state" }
+    - { src: "forest_helpers.py" } # , notify: "Restart all" }
+    - { src: "logger_setup.py" } # , notify: "Restart all" }
+    - { src: "metrics.py" } # , notify: "Restart all" }
+    - { src: "rabbitmq.py" } # , notify: "Restart all" }
+    - { src: "slack.py" } # , notify: "Restart all" }
+    - { src: "snapshot.py" } # , notify: "Restart all" }
+    - { src: "upload_snapshots.py", notify: "Restart upload-snapshots" }
+    - { src: "validate_snapshots.py", notify: "Restart validate-snapshots" }
+#  notify: "{{ item.notify | default(omit) }}"
   loop_control:
-    label: "{{ item }}"
+    label: "{{ item.src }}"

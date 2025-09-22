@@ -1,5 +1,5 @@
 ---
-- name: Create data dir
+- name: Create directories
   ansible.builtin.file:
     path: "{{ forest.host.data_path }}"
     state: directory
@@ -7,40 +7,30 @@
     group: "{{ forest.group }}"
     mode: "0755"
   check_mode: false
+  loop:
+    - "{{ forest.host.data_path }}"
+    - "{{ forest.host.scripts_path }}"
+    - "{{ forest.host.config_path }}"
 
-- name: Create a scripts dir
-  ansible.builtin.file:
-    path: "{{ forest.host.scripts_path }}"
-    state: directory
-    owner: "{{ forest.user }}"
-    group: "{{ forest.group }}"
-    mode: "0755"
-  check_mode: false
-
-- name: Create a config dir
-  ansible.builtin.file:
-    path: "{{ forest.host.config_path }}"
-    state: directory
-    owner: "{{ forest.user }}"
-    group: "{{ forest.group }}"
-    mode: "0755"
-  check_mode: false
-
-- name: Forest filtering RPC file
+- name: Forest configuration files
   ansible.builtin.template:
-    src: templates/filter-list.txt
-    dest: "{{ forest.host.config_path }}/filter-list.txt"
+    src: templates/{{ item }}.j2
+    dest: "{{ forest.host.config_path }}/{{ item }}"
     mode: "0755"
   notify:
     - Restart_forest_docker
+  loop:
+    - filter-list.txt
+    - config.toml
 
-- name: Template forest full node config file
+- name: Template Run forest-node script
   ansible.builtin.template:
-    src: templates/config.toml.j2
-    dest: "{{ forest.host.config_path }}/config.toml"
+    src: "forest.sh.j2"
+    dest: "{{ forest.host.scripts_path }}/forest.sh"
+    owner: "{{ forest.user }}"
+    group: "{{ forest.group }}"
     mode: "0755"
-  notify:
-    - Restart_forest_docker
+  notify: Restart_forest_docker
 
 - name: Ensure NTP is installed
   ansible.builtin.apt:
@@ -54,15 +44,6 @@
     name: ntp
     state: started
     enabled: true
-
-- name: Template Run forest-node script
-  ansible.builtin.template:
-    src: "forest.sh.j2"
-    dest: "{{ forest.host.scripts_path }}/forest.sh"
-    owner: "{{ forest.user }}"
-    group: "{{ forest.group }}"
-    mode: "0755"
-  notify: Restart_forest_docker
 
 - name: Start forest node container
   community.docker.docker_container:

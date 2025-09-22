@@ -28,6 +28,7 @@ forest:
   rpc:
     enabled: true
     port: 2345
+    # Used by external nginx proxy
     host_port: 32345
   metrics:
     enabled: true
@@ -35,3 +36,16 @@ forest:
     host_port: 36116
   import_libp2p_private_key: false
   libp2p_private_key: ""
+
+nginx:
+  host:
+    dir: /home/{{ ansible_user }}/nginx
+  container:
+    dir: /etc/nginx
+  metrics:
+    auth_user: ""
+    auth_password: ""
+
+node_exporter:
+  public_port: 39100
+  port: 9100

@@ -58,7 +58,7 @@ def secs_to_dhms(seconds):
     d, rem = divmod(seconds, 60*60*24)
     h, rem = divmod(rem, 60*60)
     m, s = divmod(rem, 60)
-    result = f"{m}m {int(s)}s"
+    result = f"{int(m)}m {int(s)}s"
     if h > 0:
         result = f"{h}h {result}"
     if d > 0:

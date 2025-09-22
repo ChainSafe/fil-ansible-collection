@@ -163,7 +163,7 @@ def forest_validate(snapshot_path: str) -> bool:
             shell=True,
             bufsize=1  # line-buffered
         )
-        return_code = proc.wait(timeout=10 * 60)
+        return_code = proc.wait(timeout=TIMEOUT_SECONDS)
         if return_code != 0:
             for line in proc.stdout:
                 logger.debug(line.rstrip())
@@ -212,6 +212,7 @@ def validate_snapshot(metadata: SnapshotMetadata) -> bool:
 def process_snapshot(delivery_tag: int, metadata: SnapshotMetadata, rabbit: RabbitMQClient = None):
     """Process snapshot with timeout logic."""
     logger.info(f"⏳Start processing snapshot: {metadata.build_information.build_path}")
+    snapshot_type = os.path.basename(os.path.dirname(metadata.build_information.build_path))
     result = {"success": False}
 
     def worker():
@@ -233,7 +234,9 @@ def process_snapshot(delivery_tag: int, metadata: SnapshotMetadata, rabbit: Rabb
             rabbit.ack(delivery_tag)
             slack_notify(f"Validate snapshot {metadata.build_information.build_path} succeeded", "success",
                          metadata.build_information.build_timestamp)
-
+            logger.debug(f"Cleaning up {metadata.build_information.build_path}")
+            if snapshot_type in ["latest-v1", "latest-v2", "lite"]:
+                os.remove(metadata.build_information.build_path)
         else:
             logger.error(f"❌Snapshot {metadata.build_information.build_path} is not valid.")
             rabbit.produce(RabbitQueue.VALIDATE_FAILED, metadata.to_json())

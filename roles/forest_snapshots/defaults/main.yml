@@ -68,9 +68,11 @@ forest:
     - "--no-gc"
   host:
     # Forest data directory on host.
-    data_path: "/data/forest_data"
+    data_path: "/home/{{ ansible_user }}/forest_data"
     # Snapshot path on host.
-    snapshot_path: "/data/snapshots"
+    snapshot_path: "/home/{{ ansible_user }}/snapshots"
+    # Snapshot archive path on host.
+    snapshot_archive: "/data/snapshots"
     # Forest config directory on host.
     config_path: "/home/{{ ansible_user }}/forest/config"
     # Helper scripts directory on host.
@@ -84,6 +86,8 @@ forest:
     scripts_path: "/scripts"
     # Snapshot output path inside container.
     snapshot_path: "/home/forest/snapshots"
+    # Snapshot archive output path inside container.
+    snapshot_archive: "/home/forest/snapshots-archive"
     # Archival snapshot output path inside container.
     # Metrics/logs path inside container.
     metrics_path: "/data/metrics"

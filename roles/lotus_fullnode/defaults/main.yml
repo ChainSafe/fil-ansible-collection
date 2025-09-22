@@ -34,6 +34,8 @@ lotus:
     logs_path: "/home/lotus/logs"
   rpc:
     port: 1234
+    # Used by external nginx proxy
+    host_port: 31234
   libp2p:
     port: 1347
     private_key: "!Secret"
@@ -49,3 +51,7 @@ lotus:
   daemon_conn_mgr:
     low: 1024
     high: 2048
+
+node_exporter:
+  public_port: 39100
+  port: 9100

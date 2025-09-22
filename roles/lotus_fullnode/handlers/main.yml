@@ -3,3 +3,7 @@
   community.docker.docker_container:
     name: "lotus-{{ lotus.network }}-{{ lotus.node_type }}"
     restart: true
+
+- name: Reload nginx
+  ansible.builtin.command: docker restart nginx
+  changed_when: true

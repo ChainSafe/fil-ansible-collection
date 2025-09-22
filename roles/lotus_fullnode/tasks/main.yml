@@ -1,0 +1,6 @@
+---
+- name: Configure Lotus Node
+  ansible.builtin.import_tasks: lotus-node.yml
+
+- name: Configure Nginx
+  ansible.builtin.import_tasks: nginx.yml

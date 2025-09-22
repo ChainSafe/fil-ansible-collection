@@ -1,0 +1,6 @@
+---
+- name: Configure Forest Node
+  ansible.builtin.import_tasks: forest-node.yml
+
+- name: Configure Nginx
+  ansible.builtin.import_tasks: nginx.yml

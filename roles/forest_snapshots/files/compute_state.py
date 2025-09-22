@@ -32,6 +32,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
     """Compute state for a given epoch."""
     logger.info(f"⏳Computing state for epochs {epoch} - {epoch + COMPUTE_BATCH_SIZE}")
     start = time.time()
+    api_info = get_api_info()
     try:
         with metrics.track_processing():
             proc = subprocess.Popen(
@@ -41,8 +42,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
                     "--n-epochs", str(COMPUTE_BATCH_SIZE+1)
                 ],
                 env={
-                    "FULLNODE_API_INFO": get_api_info(),
-                    "RUST_LOG": "info"
+                    "FULLNODE_API_INFO": api_info,
                 },
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
             )
@@ -60,7 +60,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
                             "--epoch", str(epoch_manual),
                         ],
                         env={
-                            "FULLNODE_API_INFO": get_api_info()
+                            "FULLNODE_API_INFO": api_info
                         },
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
                     )
@@ -69,7 +69,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
                     return_code = proc.wait()
                     if return_code != 0:
                         metrics.inc_failure()
-                        slack_notify(f"Epochs {epoch_manual} compute failed", "failed")
+                        # slack_notify(f"Epochs {epoch_manual} compute failed", "failed")
                         raise Exception("Epochs compute failed")
         else:
             metrics.inc_success()
@@ -104,12 +104,15 @@ def main():
         epochs_left = current_epoch - historic_start_epoch
         metrics.set_total(epochs_left // COMPUTE_BATCH_SIZE)
         if current_epoch - historic_start_epoch > COMPUTE_BATCH_SIZE:
+            slack_id = slack_notify(f"Epochs {historic_start_epoch} to {current_epoch} compute started", "info")
             for epoch in range(historic_start_epoch, current_epoch, COMPUTE_BATCH_SIZE):
                 with RabbitMQClient() as rabbit:
                     try:
                         compute_state(epoch, rabbit)
+                        slack_notify(f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} compute finished", "success", slack_id)
                     except Exception as e:
                         logger.error(f"🚧Error computing state on epoch {epoch}: {e}.  Sleeping for 10 minutes...")
+                        slack_notify(f"Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} compute failed", "failed", slack_id)
                         time.sleep(600)
                         break
                 time.sleep(10)

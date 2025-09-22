@@ -31,6 +31,7 @@ services:
     volumes:
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "{{ forest.host.snapshot_archive }}:{{ forest.container.snapshot_archive }}"
       - "{{ forest.host.config_path }}:{{ forest.container.config_path }}:ro"
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
     healthcheck:
@@ -52,6 +53,7 @@ services:
       env: "prod"
       container_role: "forest"
       instance: "{{ inventory_hostname }}"
+      autoheal: true
 
   lotus:
     image: {{ lotus.image.name }}:{{ lotus.image.tag }}
@@ -75,6 +77,7 @@ services:
       - "{{ lotus.host.parameter_cache }}:{{ lotus.container.parameter_cache }}"
       - "{{ lotus.host.parent_cache }}:{{ lotus.container.parent_cache }}"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "{{ forest.host.snapshot_archive }}:{{ forest.container.snapshot_archive }}"
     labels:
       project: "fil-archive-snapshots"
       env: "prod"
@@ -227,6 +230,7 @@ services:
       - "{{ forest.host.scripts_path }}:{{ forest.container.scripts_path }}:ro"
       - "{{ forest.host.data_path }}:{{ forest.container.data_path }}:ro"
       - "{{ forest.host.snapshot_path }}:{{ forest.container.snapshot_path }}"
+      - "{{ forest.host.snapshot_archive }}:{{ forest.container.snapshot_archive }}"
       - "metrics:{{ forest.container.metrics_path }}"
     healthcheck: *default-job-healthcheck
 
@@ -293,6 +297,16 @@ services:
       project: "fil-archive-snapshots"
       env: "prod"
       role: "alloy"
+  # FIXME: wait for https://github.com/moby/moby/issues/28400
+  autoheal:
+    container_name: autoheal
+    restart: always
+    image: willfarrell/autoheal
+    environment:
+      AUTOHEAL_INTERVAL: 30
+      AUTOHEAL_START_PERIOD: 120
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   metrics:

@@ -1,0 +1,50 @@
+- name: Create data dir
+  ansible.builtin.file:
+    path: "{{ nginx.host.dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy .conf file
+  ansible.builtin.template:
+    src: "nginx.conf.j2"
+    dest: "{{ nginx.host.dir }}/nginx.conf"
+    mode: "0755"
+  notify:
+    - Reload nginx
+
+- name: Validate NGINX htpasswd file
+  ansible.builtin.command:
+    cmd: >
+      htpasswd -b -v {{ nginx.host.dir }}/.htpasswd \
+        {{ nginx.metrics.auth_user }} {{ nginx.metrics.auth_password }}
+  ignore_errors: true
+  changed_when: false
+  register: validate_password_out
+
+# Re-running htpasswd with the same password will result in a different file since the salt changes
+- name: Create NGINX htpasswd file
+  ansible.builtin.command:
+    cmd: >
+      htpasswd -b -c {{ nginx.host.dir }}/.htpasswd \
+        {{ nginx.metrics.auth_user }} {{ nginx.metrics.auth_password }}
+  when:
+    - validate_password_out.rc is defined
+    - validate_password_out.rc != 0
+  changed_when: true
+
+- name: Start NGINX
+  community.docker.docker_container:
+    name: "nginx"
+    state: started
+    image: nginx:alpine
+    pull: true
+    volumes:
+      - "{{ nginx.host.dir }}:{{ nginx.container.dir }}"
+    restart_policy: unless-stopped
+    network_mode: host
+    log_driver: json-file
+    log_options:
+      max-file: "10"
+      max-size: 30m
+      mode: non-blocking
+      max-buffer-size: 4m

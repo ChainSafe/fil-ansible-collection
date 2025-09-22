@@ -11,8 +11,15 @@ logger = setup_logger(os.path.basename(__file__))
 
 SLACK_TOKEN = os.getenv("SLACK_TOKEN")  # Bot token
 SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#forest-dump")  # Channel ID or name, e.g., "#alerts"
+SLACK_CHANNEL_ID = ""
 
 slack_client = WebClient(token=SLACK_TOKEN)
+
+# response = slack_client.conversations_list(types="public_channel,private_channel")
+# for ch in response["channels"]:
+#     if ch["name"] == SLACK_CHANNEL:
+#         SLACK_CHANNEL_ID = ch["id"]
+#         break
 
 
 def slack_notify(message: str, status: str = "info", thread_ts: str = None) -> Optional[str]:
@@ -36,26 +43,26 @@ def slack_notify(message: str, status: str = "info", thread_ts: str = None) -> O
     }.get(status, ":evergreen_tree:")
 
     text = f"{emoji} {message} {forest}"
-    logger.debug(f"Slack notification sending: {text}")
+    logger.debug(f"Slack notification sending to {SLACK_CHANNEL}: {text}")
     try:
         # Starting a new thread
         if thread_ts is None:
             response = slack_client.chat_postMessage(channel=SLACK_CHANNEL, text=text)
-            return response["ts"]
         else:
+            response = slack_client.chat_postMessage(channel=SLACK_CHANNEL, text=text, thread_ts=thread_ts)
             # head_message = slack_client.conversations_history(
-            #     channel=SLACK_CHANNEL,
+            #     channel=SLACK_CHANNEL_ID,
             #     latest=thread_ts,
             #     limit=1,
             #     inclusive=True
             # )["messages"][0]["text"]
             # new_text = re.sub(r":\w+?:", emoji, head_message, count=1)
-            # slack_client.chat_update(
-            #     channel=SLACK_CHANNEL,
+            # response = slack_client.chat_update(
+            #     channel=SLACK_CHANNEL_ID,
             #     ts=thread_ts,
             #     text=f"{new_text}{forest}"
             # )
-            slack_client.chat_postMessage(channel=SLACK_CHANNEL, text=text, thread_ts=thread_ts)
+        return response["ts"]
 
     except SlackApiError as e:
-        logger.error(f"Error sending Slack message: {e.response['error']}")
+        logger.error(f"Error sending Slack message: {e.response['error']}", exc_info=True)

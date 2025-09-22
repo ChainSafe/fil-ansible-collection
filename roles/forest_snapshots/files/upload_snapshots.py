@@ -51,15 +51,19 @@ KB = 1024
 MB = KB * KB
 
 
-def upload_sha256(snapshot_path: str) -> str:
+def upload_sha256(metadata: SnapshotMetadata):
     """Upload sha256 to R2."""
+    snapshot_path = metadata.build_information.build_path
+    sha256 = hashlib.sha256()
     with open(snapshot_path, "rb") as f:
-        snapshot_hash = hashlib.sha256(f.read()).hexdigest()
+        for chunk in iter(lambda: f.read(10*1024*1024), b""):
+            sha256.update(chunk)
+    snapshot_hash = sha256.hexdigest()
     snapshot_sha256 = f"{snapshot_path}.sha256sum"
     with open(snapshot_sha256, "w") as f:
         f.write(snapshot_hash)
     r2_upload_artifact(snapshot_sha256)
-    return snapshot_hash
+    metadata.snapshot.sha256 = snapshot_hash
 
 
 def upload_metadata(metadata: SnapshotMetadata):
@@ -120,6 +124,7 @@ def r2_upload_artifact(file_path: str) -> bool:
 def upload_snapshot(snapshot_path: str, metadata: SnapshotMetadata) -> bool:
     """Wrapper around upload that also produces RabbitMQ status messages."""
     with metrics.track_upload():
+        upload_sha256(metadata)
         upload_metadata(metadata)
         return r2_upload_artifact(snapshot_path)
 

@@ -237,6 +237,8 @@ def process_snapshot(delivery_tag: int, metadata: SnapshotMetadata, rabbit: Rabb
             logger.debug(f"Cleaning up {metadata.build_information.build_path}")
             if snapshot_type in ["latest-v1", "latest-v2", "lite"]:
                 os.remove(metadata.build_information.build_path)
+                os.remove(f"{metadata.build_information.build_path}.metadata.json")
+                os.remove(f"{metadata.build_information.build_path}.sha256sum")
         else:
             logger.error(f"❌Snapshot {metadata.build_information.build_path} is not valid.")
             rabbit.produce(RabbitQueue.VALIDATE_FAILED, metadata.to_json())

@@ -76,7 +76,7 @@ def compute_state(epoch: int, rabbit: RabbitMQClient):
             time_taken = time.time() - start
             progress = metrics.get_progress()
             if progress > 0:
-                time_estimate = secs_to_dhms(int(time_taken / metrics.get_progress()))
+                time_estimate = secs_to_dhms(int(time_taken * metrics.get_remaining()))
                 logger.info(
                     f"✅Epochs {epoch} to {epoch + COMPUTE_BATCH_SIZE} finished.\n" +
                     f"Took time: {secs_to_dhms(time_taken)}.\n" +

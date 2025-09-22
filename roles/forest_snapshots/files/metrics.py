@@ -15,6 +15,7 @@ class Metrics:
 
         # Progress gauge
         self.total_messages = Gauge("forest_total", "Total snapshots to process")
+        self.remaining_messages = Gauge("forest_remaining", "Total snapshots to process")
         self.progress = Gauge("forest_progress", "Progress: processed snapshots / total")
 
         # Durations
@@ -29,6 +30,7 @@ class Metrics:
 
     def set_total(self, value: int):
         self.total_messages.set(value)
+        self.remaining_messages.set(value)
         self.success_counter.reset()
         self.failure_counter.reset()
         self.update_progress()
@@ -39,9 +41,13 @@ class Metrics:
         total = self.total_messages._value.get()
         if total > 0:
             self.progress.set(processed / total)
+        self.remaining_messages.set(total - processed)
 
     def get_progress(self):
         return self.progress._value.get()
+
+    def get_remaining(self):
+        return self.remaining_messages._value.get()
 
     def inc_success(self):
         self.success_counter.inc()
